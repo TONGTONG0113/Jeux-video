@@ -350,7 +350,7 @@ Le projet est réalisé par une équipe de **trois étudiants**.
 
 | Membre | Responsabilités principales |
 |---|---|
-| Membre 1 | `ArmyManagerRed`, stratégie globale et coordination de l'armée |
+| **LIU Yao** | `ArmyManagerRed`, stratégie globale et coordination de l'armée |
 | **Ruofan** | `DroneRedBehavior` et logique des drones |
 | **CHENG Zihao** | `TurretRedBehavior` et logique des tourelles d'artillerie |
 
