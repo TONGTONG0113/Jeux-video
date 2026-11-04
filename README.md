@@ -351,7 +351,7 @@ Le projet est réalisé par une équipe de **trois étudiants**.
 | Membre | Responsabilités principales |
 |---|---|
 | Membre 1 | `ArmyManagerRed`, stratégie globale et coordination de l'armée |
-| Membre 2 | `DroneRedBehavior` et logique des drones |
+| **Ruofan** | `DroneRedBehavior` et logique des drones |
 | **CHENG Zihao** | `TurretRedBehavior` et logique des tourelles d'artillerie |
 
 L'intégration, les tests, la validation et le débogage sont réalisés collectivement.
