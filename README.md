@@ -6,9 +6,11 @@ Ce projet est réalisé dans le cadre du module **Real Time Decision Making in V
 
 L'objectif est de développer une intelligence artificielle pour l'armée rouge dans un jeu de stratégie en temps réel de type RTS Wargame, développé avec Unity 3D et C#.
 
-L'armée rouge doit être capable de vaincre l'armée verte contrôlée par l'IA par défaut. Pour atteindre cet objectif, nous allons améliorer les arbres de comportement des drones et des tourelles d'artillerie, ainsi que la coordination globale des unités.
+L'armée rouge doit être capable de vaincre l'armée verte contrôlée par l'IA par défaut. Pour atteindre cet objectif, nous améliorons les arbres de comportement des drones et des tourelles d'artillerie, ainsi que la coordination globale des unités.
 
 Le projet comprend également le développement d'une fonctionnalité supplémentaire afin de différencier notre solution.
+
+---
 
 ## 2. Objectifs
 
@@ -21,6 +23,8 @@ Les objectifs principaux sont les suivants :
 - Concevoir des arbres de comportement adaptés aux différents types d'unités.
 - Implémenter une fonctionnalité supplémentaire.
 - Évaluer les performances de l'IA à partir de simulations et de données statistiques.
+
+---
 
 ## 3. État initial et contraintes
 
@@ -47,6 +51,8 @@ L'armée rouge est donc en infériorité numérique. Notre stratégie consiste �
 - Le développement doit respecter l'architecture existante du projet Unity.
 - Les modifications doivent être testées afin de vérifier leur impact sur les performances de l'armée rouge.
 
+---
+
 ## 4. Stratégie générale
 
 Notre stratégie repose sur trois principes :
@@ -57,28 +63,38 @@ Notre stratégie repose sur trois principes :
 
 L'objectif est de maximiser l'efficacité de chaque unité sans modifier ses caractéristiques de base.
 
+---
+
 ## 5. Stratégies tactiques
 
 ### 5.1. Priorisation des cibles
 
-Le système de décision devra sélectionner les cibles en fonction de critères tactiques, plutôt que de s'appuyer uniquement sur un choix aléatoire.
+La sélection des cibles ne repose plus uniquement sur un choix simple ou aléatoire.
 
-Les critères envisagés sont :
+Pour l'artillerie rouge, une sélection tactique a déjà été implémentée.
+
+Les critères actuellement utilisés comprennent notamment :
 
 - Le type d'unité ennemie.
-- La menace représentée par la cible.
-- Sa distance et son accessibilité.
+- La distance de la cible.
 - Ses points de vie restants.
-- Le nombre d'unités alliées qui l'attaquent déjà.
-- La pertinence de poursuivre l'attaque ou de changer de cible.
+- Les dégâts des projectiles d'artillerie déjà en vol vers cette cible.
+- La vitesse des drones ennemis.
+- La présence de plusieurs drones dans une même zone.
 
-Les tourelles ennemies pourront être considérées comme des cibles prioritaires lorsqu'elles représentent une menace importante. Toutefois, cette priorité devra être évaluée par des simulations afin de déterminer si elle améliore réellement les résultats.
+Les tourelles ennemies sont actuellement considérées comme des cibles prioritaires.
+
+Lorsqu'aucune tourelle pertinente n'est disponible, l'artillerie peut sélectionner des drones en privilégiant les unités lentes ou regroupées.
+
+---
 
 ### 5.2. Concentration des attaques des drones
 
-Les drones utiliseront une sélection de cibles plus cohérente afin de limiter la dispersion des tirs.
+L'amélioration du comportement des drones rouges est en cours.
 
-Le comportement envisagé comprend les étapes suivantes :
+L'objectif est d'utiliser une sélection de cibles plus cohérente afin de limiter la dispersion des tirs et les déplacements inutiles.
+
+Le comportement prévu comprend notamment :
 
 1. Vérifier que la cible est valide et toujours active.
 2. Évaluer les cibles disponibles.
@@ -90,51 +106,122 @@ Le comportement envisagé comprend les étapes suivantes :
 
 Cette approche vise à réduire les attaques redondantes et les poursuites inutiles.
 
+---
+
 ### 5.3. Optimisation des tourelles d'artillerie
 
-Les tourelles seront améliorées afin de sélectionner des cibles pertinentes et d'utiliser efficacement leurs attaques à dégâts de zone.
+L'intelligence artificielle des tourelles d'artillerie rouges a été améliorée.
 
-Les améliorations envisagées sont :
+Le comportement actuel utilise une nouvelle logique de sélection des cibles ainsi qu'une coordination des tirs entre les différentes tourelles.
 
-- Prioriser les unités ennemies les plus menaçantes.
-- Vérifier la validité de la cible avant de tirer.
-- Évaluer la présence de plusieurs ennemis à proximité d'une zone d'impact potentielle.
-- Éviter de conserver une cible devenue invalide.
-- Réévaluer la cible après chaque cycle d'attaque.
+Les améliorations implémentées comprennent :
 
-L'objectif est d'améliorer l'efficacité des tirs tout en conservant les caractéristiques de base des tourelles.
+- La priorité donnée aux tourelles ennemies.
+- La prise en compte des points de vie de la cible.
+- La prise en compte des projectiles d'artillerie déjà en vol.
+- L'estimation des dégâts futurs sur une cible.
+- La réduction du **overkill**.
+- Le changement de cible lorsqu'un nombre suffisant de projectiles est déjà en route pour détruire une cible.
+- La priorité donnée aux drones lents ou presque immobiles.
+- La détection des groupes de drones.
+- L'exploitation des dégâts de zone des grenades d'artillerie.
+- La réévaluation régulière de la cible.
 
-### 5.4. Coordination globale de l'armée
+Cette stratégie permet de mieux répartir les tirs entre plusieurs cibles et de limiter le gaspillage de projectiles.
 
-Le gestionnaire `ArmyManagerRed` constituera le centre de décision de l'armée rouge.
+---
 
-Il pourra exploiter les informations disponibles concernant :
+### 5.4. Gestion des projectiles déjà en vol
+
+Une logique spécifique a été ajoutée dans `ArmyManagerRed` afin de suivre les tirs d'artillerie déjà effectués.
+
+Lorsqu'une tourelle rouge tire sur une tourelle ennemie, le tir est enregistré comme un projectile en cours.
+
+Le système estime ensuite la santé future de la cible :
+
+```text
+Santé estimée
+=
+Santé actuelle
+-
+Dégâts des projectiles déjà en vol
+```
+
+Si les dégâts prévus sont suffisants pour détruire la cible, les autres tourelles peuvent immédiatement sélectionner un autre ennemi.
+
+Les tirs enregistrés sont supprimés après un délai légèrement supérieur au temps de vol du projectile.
+
+Ainsi, si un projectile rate sa cible ou si celle-ci survit, elle peut redevenir sélectionnable.
+
+---
+
+### 5.5. Ciblage des drones
+
+Les drones en mouvement rapide sont difficiles à toucher avec l'artillerie à cause du temps de vol des projectiles.
+
+Pour cette raison, l'artillerie rouge privilégie actuellement :
+
+1. Les groupes de drones lents ou presque immobiles.
+2. Les drones lents isolés.
+3. Les drones disponibles les plus proches lorsqu'aucune meilleure cible n'existe.
+
+La recherche de groupes permet d'exploiter les dégâts de zone des explosions.
+
+---
+
+### 5.6. Coordination globale de l'armée
+
+Le gestionnaire `ArmyManagerRed` constitue le centre de décision de l'armée rouge.
+
+Il peut exploiter les informations disponibles concernant :
 
 - Les positions et les trajectoires des unités alliées et ennemies.
 - Les points de vie des unités.
 - Les missiles et les grenades présents sur le champ de bataille.
 - Les obstacles et les caractéristiques du terrain.
 
-Il sera chargé de contribuer à une répartition cohérente des cibles, de limiter les doublons et de permettre une adaptation des décisions en fonction de l'évolution du combat.
+Une première partie de cette coordination est déjà utilisée pour l'artillerie afin de :
 
-Le gestionnaire ne connaît pas les intentions de l'ennemi. Les décisions devront donc reposer sur les informations observables disponibles.
+- Répartir les cibles.
+- Suivre les tirs déjà en cours.
+- Limiter les tirs inutiles sur une cible déjà condamnée.
+- Adapter le choix de cible en fonction de l'évolution du combat.
+
+La coordination globale entre les drones et les tourelles pourra encore être améliorée.
+
+Le gestionnaire ne connaît pas les intentions de l'ennemi. Les décisions reposent donc uniquement sur les informations observables disponibles.
+
+---
 
 ## 6. Architecture de l'intelligence artificielle
 
-Le développement reposera principalement sur trois composants.
+Le développement repose principalement sur trois composants.
 
 ### 6.1. `ArmyManagerRed`
 
-Responsabilités envisagées :
+`ArmyManagerRed` centralise une partie des décisions tactiques de l'armée rouge.
 
-- Centraliser les informations nécessaires à la prise de décision.
-- Évaluer et répartir les cibles.
-- Éviter, lorsque cela est possible, que trop d'unités attaquent inutilement la même cible.
-- Adapter les priorités selon l'état du champ de bataille.
+Pour l'artillerie, les fonctionnalités suivantes sont déjà implémentées :
+
+- Évaluation des cibles disponibles.
+- Sélection tactique des cibles.
+- Prise en compte des points de vie.
+- Suivi des projectiles déjà en vol.
+- Estimation des dégâts futurs.
+- Réduction du overkill.
+- Répartition plus efficace des tirs entre plusieurs cibles.
+- Détection de drones lents.
+- Détection de groupes de drones.
+
+D'autres fonctions de coordination pourront être ajoutées pour les drones et pour la stratégie globale de l'armée.
+
+---
 
 ### 6.2. `DroneRedBehavior`
 
-L'arbre de comportement des drones sera conçu autour des étapes suivantes :
+L'amélioration du Behavior Tree des drones rouges est en cours.
+
+L'objectif est de structurer leur comportement autour des étapes suivantes :
 
 - Vérification de l'état du drone.
 - Sélection d'une cible.
@@ -144,22 +231,36 @@ L'arbre de comportement des drones sera conçu autour des étapes suivantes :
 - Réévaluation de la situation.
 - Sélection d'une nouvelle cible si nécessaire.
 
+---
+
 ### 6.3. `TurretRedBehavior`
 
-L'arbre de comportement des tourelles sera conçu autour des étapes suivantes :
+Le Behavior Tree des tourelles rouges a été modifié.
 
-- Vérification de l'état de la tourelle.
-- Sélection d'une cible prioritaire.
-- Vérification de la validité et de l'accessibilité de la cible.
-- Orientation vers la cible.
-- Tir d'une grenade.
-- Réévaluation de la cible après l'attaque.
+Sa structure principale est actuellement :
 
-Les arbres de comportement seront développés avec Behavior Designer. De nouvelles tâches, conditions ou décorateurs pourront être ajoutés si les fonctionnalités existantes ne permettent pas de réaliser les stratégies prévues.
+```text
+Entry
+└── Repeater
+    └── Sequence
+        ├── Select Red Turret Target
+        ├── Turret Seek Target
+        ├── Red Turret Shoot
+        └── Wait
+```
+
+Deux nouvelles tâches sont utilisées :
+
+- `SelectRedTurretTarget` : sélection tactique de la cible.
+- `RedTurretShoot` : tir de la tourelle et enregistrement du projectile en cours.
+
+Les arbres de comportement sont développés avec Behavior Designer.
+
+---
 
 ## 7. Fonctionnalité supplémentaire
 
-Une fonctionnalité supplémentaire sera développée afin d'apporter une valeur ajoutée au projet.
+Une fonctionnalité supplémentaire devra être développée afin d'apporter une valeur ajoutée au projet.
 
 ### Proposition : unité mobile de réparation
 
@@ -173,27 +274,59 @@ Le comportement envisagé comprendrait :
 - La réparation lorsque les conditions nécessaires sont réunies.
 - Le choix d'une nouvelle cible lorsque la réparation est terminée ou impossible.
 
-Cette fonctionnalité est une proposition à valider. Son développement dépendra de la faisabilité technique, du temps disponible et de la compatibilité avec le projet existant.
+Cette fonctionnalité est encore une proposition à valider.
 
 Une alternative plus simple serait la création d'une zone de réparation dans laquelle les unités alliées pourraient récupérer des points de vie.
 
-## 8. Plan de développement
+---
 
-Le développement sera organisé en plusieurs étapes.
+## 8. État actuel du développement
 
-| Étape | Travail prévu | Résultat attendu |
+### Implémenté
+
+- Analyse du projet Unity existant.
+- Modification de `TurretRedBehavior`.
+- Nouvelle sélection tactique des cibles pour l'artillerie rouge.
+- Priorité aux tourelles ennemies.
+- Prise en compte des points de vie des cibles.
+- Suivi des projectiles d'artillerie déjà en vol.
+- Estimation des dégâts futurs.
+- Réduction du overkill.
+- Changement automatique de cible lorsqu'une cible est déjà suffisamment couverte.
+- Priorité aux drones lents.
+- Détection des groupes de drones.
+- Exploitation des dégâts de zone.
+
+### En cours / à réaliser
+
+- Optimisation complète de `DroneRedBehavior`.
+- Amélioration de la coordination globale de l'armée.
+- Développement de la fonctionnalité supplémentaire.
+- Intégration et débogage.
+- Tests sur plusieurs batailles.
+- Simulations finales sur 20 batailles valides.
+- Analyse statistique finale.
+- Préparation de la vidéo et de la livraison.
+
+---
+
+## 9. Plan de développement
+
+| Étape | Travail | État |
 |---|---|---|
-| 1 | Analyse du projet Unity existant | Compréhension de l'architecture et des comportements initiaux |
-| 2 | Tests de référence | Collecte des premières statistiques de combat |
-| 3 | Développement de `ArmyManagerRed` | Amélioration de la sélection et de la répartition des cibles |
-| 4 | Optimisation de `DroneRedBehavior` | Amélioration des déplacements et des attaques |
-| 5 | Optimisation de `TurretRedBehavior` | Amélioration du choix des cibles et des tirs |
-| 6 | Développement de la fonctionnalité supplémentaire | Ajout d'une nouvelle capacité |
-| 7 | Intégration et débogage | Vérification du fonctionnement de l'ensemble |
-| 8 | Simulations et analyse | Comparaison des performances et ajustement des stratégies |
-| 9 | Préparation de la livraison | Documentation, statistiques et vidéo de démonstration |
+| 1 | Analyse du projet Unity existant | Terminé |
+| 2 | Premiers tests | Réalisé partiellement |
+| 3 | Développement de `ArmyManagerRed` | En cours — logique d'artillerie implémentée |
+| 4 | Optimisation de `DroneRedBehavior` | En cours |
+| 5 | Optimisation de `TurretRedBehavior` | Implémentée |
+| 6 | Développement de la fonctionnalité supplémentaire | À réaliser |
+| 7 | Intégration et débogage | En cours |
+| 8 | Simulations et analyse | À poursuivre |
+| 9 | Préparation de la livraison | À réaliser |
 
-## 9. Stratégie de test et critères d'évaluation
+---
+
+## 10. Stratégie de test et critères d'évaluation
 
 Les performances seront évaluées à partir de simulations contre l'IA verte par défaut.
 
@@ -207,54 +340,87 @@ Les indicateurs suivis seront :
 - **Points de vie cumulés restants :** total des points de vie des unités survivantes.
 - **Durée de la bataille :** temps nécessaire pour terminer le combat.
 
-Les expérimentations seront réalisées progressivement :
+Les situations de blocage (*deadlock*) identifiées comme non comptabilisables seront relancées conformément aux consignes.
 
-- **Version A — Référence :** comportement initial de l'armée rouge.
-- **Version B — Optimisation tactique :** amélioration de la sélection des cibles et de la concentration des attaques.
-- **Version C — Stratégie complète :** intégration des améliorations des comportements et de la fonctionnalité supplémentaire.
+---
 
-Les résultats permettront de déterminer quelles modifications apportent une amélioration réelle.
+## 11. Répartition du travail
 
-Les situations de blocage (*deadlock*) identifiées comme non comptabilisables par le sujet seront relancées conformément aux consignes.
-
-## 10. Répartition du travail
-
-La répartition proposée pour une équipe de quatre étudiants est la suivante :
+Le projet est réalisé par une équipe de **trois étudiants**.
 
 | Membre | Responsabilités principales |
 |---|---|
-| Membre 1 | Gestionnaire de l'armée et stratégie globale |
-| Membre 2 | Arbre de comportement et logique des drones |
-| Membre 3 | Arbre de comportement et logique des tourelles |
-| Membre 4 | Fonctionnalité supplémentaire, tests et analyse statistique |
+| Membre 1 | `ArmyManagerRed`, stratégie globale et coordination de l'armée |
+| Membre 2 | `DroneRedBehavior` et logique des drones |
+| **CHENG Zihao** | `TurretRedBehavior` et logique des tourelles d'artillerie |
 
-L'intégration, la validation et le débogage devront être réalisés collectivement. La répartition définitive sera adaptée aux compétences et aux contributions réelles de chaque membre.
+L'intégration, les tests, la validation et le débogage sont réalisés collectivement.
 
-## 11. Résultats attendus
+La répartition pourra être ajustée en fonction de l'avancement du projet et des contributions réelles de chaque membre.
+
+---
+
+## 12. Fichiers principaux liés à l'artillerie RED
+
+### `ArmyManagerRed.cs`
+
+Contient notamment :
+
+- La logique de sélection tactique des cibles.
+- Le suivi des tirs d'artillerie en cours.
+- L'estimation des dégâts futurs.
+- La réduction du overkill.
+- La sélection des drones lents et des groupes de drones.
+
+### `SelectRedTurretTarget.cs`
+
+Tâche Behavior Designer utilisée pour demander à `ArmyManagerRed` la meilleure cible disponible.
+
+### `RedTurretShoot.cs`
+
+Tâche spécifique aux tourelles rouges permettant :
+
+- De tirer sur la cible sélectionnée.
+- D'enregistrer le projectile comme un tir en cours.
+
+### `TurretRedBehavior.asset`
+
+Behavior Tree utilisé par les tourelles rouges.
+
+---
+
+## 13. Résultats attendus
 
 Le projet vise à obtenir :
 
 - Une armée rouge capable de prendre des décisions tactiques plus cohérentes.
 - Une meilleure coordination entre les unités.
-- Une réduction des attaques inefficaces et des déplacements inutiles.
+- Une réduction des attaques inefficaces.
+- Une utilisation plus efficace des projectiles d'artillerie.
 - Des arbres de comportement structurés et faciles à maintenir.
 - Une fonctionnalité supplémentaire opérationnelle.
 - Des résultats statistiques permettant d'évaluer objectivement les améliorations.
 
-Ces résultats constituent les objectifs du projet et devront être confirmés par les tests.
+Les résultats définitifs devront être confirmés par les simulations finales.
 
-## 12. Technologies utilisées
+---
+
+## 14. Technologies utilisées
 
 - **Unity 3D** : moteur de jeu.
 - **C#** : langage de programmation.
 - **Behavior Designer** : conception des arbres de comportement.
-- **Git** : gestion du code source et collaboration.
+- **Git / GitHub** : gestion du code source et collaboration.
 - **CSV / tableur** : collecte et analyse des résultats de simulation.
 
-## 13. Conclusion
+---
 
-Notre approche consiste à améliorer en priorité la prise de décision de l'armée rouge, notamment la sélection des cibles, la concentration des attaques et la coordination entre les drones et les tourelles.
+## 15. Conclusion
 
-Le développement sera guidé par une démarche expérimentale : établir une référence, modifier les comportements progressivement, mesurer les résultats et conserver les améliorations démontrées par les simulations.
+Notre approche consiste à améliorer progressivement la prise de décision de l'armée rouge tout en conservant les caractéristiques originales des unités.
 
-L'objectif final est de proposer une IA tactiquement cohérente, techniquement robuste et plus efficace que l'IA verte par défaut, tout en respectant les contraintes du sujet.
+La partie concernant les tourelles d'artillerie rouges dispose déjà d'une sélection tactique des cibles, d'un mécanisme de coordination des tirs et d'une réduction du overkill.
+
+Les prochaines étapes concernent principalement l'intégration avec le comportement des drones, la fonctionnalité supplémentaire et les simulations finales.
+
+Le développement reste guidé par une démarche expérimentale : modifier les comportements, mesurer les résultats et conserver les améliorations dont l'efficacité peut être démontrée.
