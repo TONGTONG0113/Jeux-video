@@ -29,17 +29,28 @@ public class RedTurretShoot : Action
 
     public override TaskStatus OnUpdate()
     {
-        if (
-            m_Turret == null ||
-            target.Value == null
-        )
+        if (m_Turret == null)
+        {
+            return TaskStatus.Failure;
+        }
+
+        // [ADDED] Re-check target validity: between SelectRedTurretTarget
+        // and RedTurretShoot, the target may have been destroyed.
+        if (target.Value == null)
+        {
+            return TaskStatus.Failure;
+        }
+
+        IArmyElement targetElement =
+            target.Value.GetComponent<IArmyElement>();
+
+        if (targetElement == null || targetElement.Health <= 0f)
         {
             return TaskStatus.Failure;
         }
 
 
-        // Register the shell only when it is
-        // actually about to be fired.
+        // Register the shell only when it is actually about to be fired.
         if (
             m_ArmyElement != null &&
             m_ArmyElement.ArmyManager != null
@@ -60,8 +71,7 @@ public class RedTurretShoot : Action
         }
 
 
-        // Same shooting behaviour as the
-        // original TurretShoot task.
+        // Same shooting behaviour as the original TurretShoot task.
         m_Turret.Shoot(
             target.Value.position
         );

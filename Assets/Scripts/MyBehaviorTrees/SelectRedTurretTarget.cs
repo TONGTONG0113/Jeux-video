@@ -14,6 +14,13 @@ public class SelectRedTurretTarget : Action
     public SharedFloat minRadius;
     public SharedFloat maxRadius;
 
+    // [ADDED] Cooldown to prevent the turret from switching target
+    // every frame. The turret keeps its current target until this
+    // cooldown expires, unless the target becomes invalid.
+    public SharedFloat retargetCooldown = 1.0f;
+
+    float m_NextRetargetTime = 0f;
+
 
     public override void OnAwake()
     {
@@ -43,6 +50,16 @@ public class SelectRedTurretTarget : Action
         }
 
 
+        // [ADDED] If we already have a valid target and the cooldown
+        // has not expired yet, keep it. This prevents the turret from
+        // oscillating between several targets every frame.
+        if (IsCurrentTargetStillValid() &&
+            Time.time < m_NextRetargetTime)
+        {
+            return TaskStatus.Success;
+        }
+
+
         GameObject selectedTarget =
             armyManagerRed.GetBestTargetForRedTurret(
                 gameObject,
@@ -62,6 +79,42 @@ public class SelectRedTurretTarget : Action
         target.Value =
             selectedTarget.transform;
 
+        // [ADDED] Schedule next retarget.
+        m_NextRetargetTime =
+            Time.time + retargetCooldown.Value;
+
         return TaskStatus.Success;
+    }
+
+
+    // [ADDED] A target is valid if it still exists, is active,
+    // and has not been destroyed.
+    bool IsCurrentTargetStillValid()
+    {
+        if (target.Value == null)
+        {
+            return false;
+        }
+
+        GameObject go = target.Value.gameObject;
+
+        if (go == null)
+        {
+            return false;
+        }
+
+        if (!go.activeInHierarchy)
+        {
+            return false;
+        }
+
+        IArmyElement element = go.GetComponent<IArmyElement>();
+
+        if (element == null)
+        {
+            return false;
+        }
+
+        return element.Health > 0f;
     }
 }
