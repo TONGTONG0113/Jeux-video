@@ -63,7 +63,7 @@ Notre stratégie repose sur trois principes :
 
 1. **Concentration des forces :** concentrer les attaques sur des cibles prioritaires plutôt que de disperser inutilement les tirs.
 2. **Coordination des unités :** améliorer la coopération entre les drones, les tourelles et le gestionnaire de l'armée.
-3. **Adaptation au champ de bataille :** utiliser les informations disponibles sur les positions, les trajectoires, les points de vie, les obstacles et le terrain pour ajuster les décisions.
+3. **Adaptation au champ de bataille :** utiliser les informations disponibles sur les positions, les trajectoires, les points de vie et l'état du combat pour ajuster les décisions.
 
 L'objectif est de maximiser l'efficacité de chaque unité sans modifier ses caractéristiques de base.
 
@@ -94,23 +94,22 @@ Lorsqu'aucune tourelle pertinente n'est disponible, l'artillerie peut sélection
 
 ### 5.2. Comportement des drones rouges
 
-L'amélioration du comportement des drones rouges est en cours.
+Une première logique spécifique aux drones rouges a été intégrée.
 
-Une première logique spécifique aux drones rouges a été intégrée afin qu'ils puissent demander une cible à `ArmyManagerRed` et enregistrer les dégâts des missiles déjà en vol.
+Des tâches spécifiques permettent notamment :
 
-Le comportement vise à suivre les étapes suivantes :
+- De demander une cible à `ArmyManagerRed`.
+- De sélectionner une cible ennemie.
+- De se déplacer vers cette cible.
+- De s'orienter.
+- De tirer.
+- D'enregistrer les dégâts potentiels des missiles déjà en vol.
 
-1. Vérifier qu'une cible valide est disponible.
-2. Évaluer les cibles ennemies.
-3. Sélectionner une cible prioritaire.
-4. Se déplacer vers la cible.
-5. S'orienter correctement.
-6. Tirer les missiles.
-7. Enregistrer les dégâts potentiels déjà en vol.
-8. Réévaluer la situation.
-9. Sélectionner une nouvelle cible si nécessaire.
+Le comportement actuel reste en cours d'évaluation.
 
-Le comportement actuel des drones nécessite encore plusieurs optimisations concernant leur déplacement, leur précision et leur coordination.
+Les simulations permettent désormais d'identifier plusieurs problèmes concrets concernant la mobilité, la précision et l'activité des drones rouges.
+
+Ces observations sont détaillées dans la section **Analyse des problèmes actuels**.
 
 ---
 
@@ -153,7 +152,7 @@ Santé actuelle
 Dégâts des projectiles déjà en vol
 ```
 
-Si les dégâts prévus sont suffisants pour détruire une cible, les autres unités peuvent éviter de gaspiller des tirs supplémentaires sur cette cible.
+Si les dégâts prévus sont suffisants pour détruire une cible, celle-ci peut être considérée comme déjà couverte par les tirs en cours.
 
 Les tirs enregistrés sont supprimés après un délai correspondant approximativement à leur durée de vol.
 
@@ -165,13 +164,14 @@ Ainsi, si un projectile rate sa cible ou si celle-ci survit, elle peut redevenir
 
 Les drones en mouvement rapide sont difficiles à toucher avec l'artillerie à cause du temps de vol des projectiles.
 
-Pour cette raison, l'artillerie rouge privilégie actuellement :
+L'artillerie rouge prend actuellement en compte :
 
-1. Les groupes de drones lents ou presque immobiles.
-2. Les drones lents isolés.
-3. Les drones disponibles les plus proches lorsqu'aucune meilleure cible n'existe.
+- La vitesse des drones.
+- La distance.
+- La présence de plusieurs drones proches les uns des autres.
+- La disponibilité des tourelles ennemies comme cibles prioritaires.
 
-La recherche de groupes permet d'exploiter les dégâts de zone des explosions.
+Cette logique permet à l'artillerie de sélectionner des cibles présentant un meilleur potentiel d'efficacité.
 
 ---
 
@@ -191,11 +191,11 @@ Une première partie de cette coordination est déjà utilisée afin de :
 
 - Répartir les cibles d'artillerie.
 - Suivre les dégâts déjà en cours.
-- Limiter les tirs inutiles sur une cible déjà condamnée.
+- Limiter certains tirs redondants.
 - Adapter le choix de cible en fonction de l'évolution du combat.
-- Partager une logique commune de demande de cible entre différents types d'unités rouges.
+- Fournir une interface commune de demande de cible aux unités rouges.
 
-La coordination globale entre les drones et les tourelles pourra encore être améliorée.
+La coordination globale entre les différents types d'unités reste en cours d'évaluation.
 
 ---
 
@@ -213,11 +213,11 @@ Les fonctionnalités actuellement implémentées comprennent :
 - Suivi des dégâts déjà en vol.
 - Estimation des dégâts futurs.
 - Réduction du overkill.
-- Répartition plus efficace des tirs entre plusieurs cibles.
+- Répartition des tirs entre plusieurs cibles.
 - Détection de drones lents.
 - Détection de groupes de drones.
 - Gestion des dégâts potentiels des missiles des drones.
-- Interface commune `RequestTarget` pour les drones, les tourelles et une future unité de soutien.
+- Interface commune `RequestTarget` pour plusieurs types d'unités rouges.
 
 ---
 
@@ -230,9 +230,7 @@ Des tâches spécifiques ont été ajoutées :
 - `SelectRedDroneTarget`
 - `RedDroneShoot`
 
-L'objectif est de remplacer progressivement la logique de l'IA par défaut par une logique spécifique à l'armée rouge.
-
-Le comportement général repose sur :
+Le comportement général actuel repose sur :
 
 ```text
 Entry
@@ -245,7 +243,7 @@ Entry
         └── Wait
 ```
 
-Le déplacement et l'orientation doivent encore être améliorés afin d'éviter les regroupements excessifs, les périodes d'inactivité et les problèmes de précision.
+Les simulations montrent encore plusieurs comportements indésirables qui devront être étudiés par l'équipe responsable de cette partie.
 
 ---
 
@@ -278,20 +276,13 @@ Les arbres de comportement sont développés avec Behavior Designer.
 
 Une fonctionnalité supplémentaire doit être développée afin d'apporter une valeur ajoutée au projet.
 
-### Proposition : unité mobile de réparation
+### Proposition actuelle : unité mobile de réparation
 
-Une unité de soutien pourrait être ajoutée à l'armée rouge afin de restaurer les points de vie des unités alliées endommagées.
+Une unité de soutien est envisagée afin de restaurer les points de vie des unités alliées endommagées.
 
-Le comportement envisagé comprendrait :
+Une première structure permettant d'identifier une future unité de type `Medic` existe déjà dans `ArmyManagerRed`.
 
-- La détection des unités alliées nécessitant une réparation.
-- La sélection d'une unité prioritaire.
-- Le déplacement vers cette unité.
-- La réparation lorsque les conditions nécessaires sont réunies.
-- Le choix d'une nouvelle cible lorsque la réparation est terminée ou impossible.
-- Un effet visuel permettant de représenter la réparation.
-
-Une première structure pour le ciblage d'une future unité médicale existe déjà dans `ArmyManagerRed`, mais la fonctionnalité complète reste à développer.
+La fonctionnalité complète reste cependant à concevoir, intégrer et tester.
 
 ---
 
@@ -357,7 +348,7 @@ Lorsqu'une armée est entièrement détruite, le système affiche automatiquemen
 
 L'interface sépare les résultats de l'armée rouge et de l'armée verte afin de faciliter la comparaison.
 
-Les mêmes informations restent également disponibles dans la Console Unity pour faciliter le débogage.
+Les mêmes informations sont également disponibles dans la Console Unity pour faciliter le débogage.
 
 ---
 
@@ -374,7 +365,7 @@ Les mêmes informations restent également disponibles dans la Console Unity pou
 - Estimation des dégâts futurs.
 - Réduction du overkill.
 - Changement automatique de cible lorsqu'une cible est déjà suffisamment couverte.
-- Priorité aux drones lents.
+- Prise en compte des drones lents.
 - Détection des groupes de drones.
 - Exploitation des dégâts de zone.
 - Première intégration de la logique spécifique des drones rouges.
@@ -392,21 +383,19 @@ Les mêmes informations restent également disponibles dans la Console Unity pou
 - Détection du gagnant.
 - Affichage automatique d'un panneau de résultats en fin de bataille.
 
-### En cours / à réaliser
+### Problèmes actuellement observés / travaux restant à étudier
 
-- Optimisation complète de `DroneRedBehavior`.
-- Réduction du regroupement des drones rouges.
-- Amélioration du déplacement des drones.
-- Correction des périodes d'inactivité de certains drones.
-- Amélioration de la précision des deux missiles d'un drone.
-- Amélioration de la coordination globale de l'armée.
-- Développement de la fonctionnalité supplémentaire.
-- Intégration et débogage.
-- Validation du système statistique sur plusieurs batailles.
-- Simulations finales sur 20 batailles valides.
-- Analyse statistique finale.
-- Export automatique éventuel des résultats vers un fichier CSV.
-- Préparation de la vidéo et de la livraison.
+- Comportement de `DroneRedBehavior` encore instable dans certaines situations.
+- Regroupement important de plusieurs drones rouges dans une même zone.
+- Différence de précision observée entre les missiles tirés par un même drone.
+- Certains drones rouges restent parfois immobiles ou inactifs pendant une partie du combat.
+- L'armée rouge reste très vulnérable aux dégâts de zone de l'artillerie verte.
+- La coordination globale entre drones et tourelles doit encore être évaluée.
+- La fonctionnalité supplémentaire reste à finaliser.
+- Le système complet doit encore être validé sur plusieurs batailles.
+- Les 20 simulations finales restent à effectuer.
+- L'analyse statistique finale reste à réaliser.
+- La vidéo et la livraison finale restent à préparer.
 
 ---
 
@@ -417,14 +406,15 @@ Les mêmes informations restent également disponibles dans la Console Unity pou
 | 1 | Analyse du projet Unity existant | Terminé |
 | 2 | Premiers tests | Réalisé |
 | 3 | Développement de `ArmyManagerRed` | En cours |
-| 4 | Optimisation de `DroneRedBehavior` | En cours |
+| 4 | Développement de `DroneRedBehavior` | En cours |
 | 5 | Optimisation de `TurretRedBehavior` | Implémentée |
 | 6 | Système global de statistiques | Implémenté |
 | 7 | Interface de résultats | Implémentée |
-| 8 | Développement de la fonctionnalité supplémentaire | À réaliser |
+| 8 | Fonctionnalité supplémentaire | À poursuivre |
 | 9 | Intégration et débogage | En cours |
-| 10 | Simulations et analyse | À poursuivre |
-| 11 | Préparation de la livraison | À réaliser |
+| 10 | Simulations finales | À réaliser |
+| 11 | Analyse finale | À réaliser |
+| 12 | Préparation de la livraison | À réaliser |
 
 ---
 
@@ -436,11 +426,11 @@ Conformément au sujet, **20 batailles valides** devront être simulées pour l'
 
 Les indicateurs principaux sont :
 
-- **Taux de victoire :** proportion de batailles remportées par l'armée rouge.
-- **Nombre de drones survivants.**
-- **Nombre de tourelles survivantes.**
-- **Points de vie cumulés restants.**
-- **Durée de la bataille.**
+- **Taux de victoire**
+- **Nombre de drones survivants**
+- **Nombre de tourelles survivantes**
+- **Points de vie cumulés restants**
+- **Durée de la bataille**
 
 Le système développé permet également de suivre :
 
@@ -453,7 +443,7 @@ Le système développé permet également de suivre :
 - Le nombre total d'unités touchées par les explosions.
 - Le nombre moyen d'unités touchées par tir d'artillerie.
 
-Ces indicateurs sont désormais collectés automatiquement par `BattleStatsManager` et affichés à la fin de chaque bataille.
+Ces indicateurs sont collectés automatiquement par `BattleStatsManager` et affichés à la fin de chaque bataille.
 
 Les situations de blocage (*deadlock*) identifiées comme non comptabilisables devront être relancées conformément aux consignes.
 
@@ -461,83 +451,92 @@ Les situations de blocage (*deadlock*) identifiées comme non comptabilisables d
 
 ## 12. Analyse des problèmes actuels
 
-Les premières simulations permettent d'identifier plusieurs limites importantes dans le comportement actuel de l'armée rouge.
+Les premières simulations permettent d'identifier plusieurs comportements qui limitent actuellement les performances de l'armée rouge.
+
+Cette section décrit uniquement les problèmes observés. Les choix d'implémentation permettant de les corriger restent à définir par les membres responsables des différentes parties du projet.
 
 ### 12.1. Regroupement excessif des drones rouges
 
-Les drones rouges ont tendance à se déplacer vers les mêmes zones et à poursuivre des cibles proches les unes des autres.
+Plusieurs drones rouges ont tendance à se déplacer vers les mêmes zones du terrain.
 
-Cela provoque une forte concentration des drones dans une zone réduite.
+Ils peuvent ainsi se retrouver très proches les uns des autres pendant le combat.
 
-Ce comportement pose un problème important face à l'artillerie verte, car les grenades possèdent des dégâts de zone.
+Ce comportement augmente fortement leur vulnérabilité face aux attaques possédant des dégâts de zone.
 
-Une seule explosion peut donc endommager plusieurs drones rouges simultanément.
-
-Une amélioration future devra introduire une logique de dispersion ou des positions d'attaque différentes afin de réduire la vulnérabilité de l'armée rouge aux dégâts de zone.
+Les simulations montrent notamment que l'artillerie verte peut toucher plusieurs unités rouges avec une même explosion lorsque celles-ci sont regroupées.
 
 ---
 
-### 12.2. Précision des missiles des drones rouges
+### 12.2. Différence de précision entre les missiles d'un drone
 
-Chaque drone possède plusieurs points de lancement de missiles.
+Chaque drone tire plusieurs missiles depuis différents points de lancement.
 
-Actuellement, les missiles utilisent principalement l'orientation générale du drone lors du lancement.
+Pendant les tests, il a été observé qu'un missile peut être correctement orienté vers la cible alors qu'un autre missile tiré par le même drone passe à côté.
 
-Cette méthode peut provoquer une différence de précision entre les différents points de tir.
+Ce comportement réduit l'efficacité réelle des attaques des drones rouges.
 
-Dans certaines situations, un missile est correctement orienté vers la cible tandis que le second passe à côté.
-
-Une amélioration prévue consiste à calculer séparément la direction de tir de chaque missile à partir de son propre point de lancement vers la cible sélectionnée.
-
-Les missiles conserveront ensuite une trajectoire rectiligne conformément aux contraintes du projet.
+Les statistiques globales montrent également que la précision des drones rouges reste inférieure à celle des drones verts dans certaines batailles.
 
 ---
 
 ### 12.3. Drones temporairement inactifs
 
-Certains drones rouges peuvent rester immobiles pendant une partie du combat.
+Certains drones rouges restent parfois immobiles pendant une partie du combat.
 
-Plusieurs causes sont actuellement envisagées :
+Ils peuvent alors ne plus se déplacer et ne plus attaquer pendant plusieurs secondes.
 
-- Une cible devenue invalide ou détruite.
-- Une sélection de cible ne trouvant temporairement aucun résultat.
-- Une destination de déplacement devenue obsolète.
-- Une tâche du Behavior Tree retournant `Failure`.
-- Une mise à jour insuffisante de la position d'une cible mobile.
+Ce phénomène réduit fortement la puissance effective de l'armée rouge, qui possède déjà moins de drones que l'armée verte au début de la bataille.
 
-Cette situation réduit fortement l'efficacité de l'armée rouge, qui est déjà en infériorité numérique au début du combat.
-
-Le déplacement et le Behavior Tree des drones devront être améliorés afin de réévaluer plus régulièrement les cibles et d'éviter les périodes d'inactivité.
+La cause exacte de ce comportement doit encore être identifiée.
 
 ---
 
-### 12.4. Analyse des premières statistiques
+### 12.4. Vulnérabilité aux dégâts de zone
 
-Les premières simulations montrent une tendance intéressante.
+Les simulations montrent que les pertes rouges peuvent être très rapides lorsque plusieurs drones se trouvent dans une même zone.
 
-L'artillerie rouge obtient généralement une précision supérieure à celle de l'artillerie verte.
+Même lorsque l'artillerie verte possède une précision inférieure à celle de l'artillerie rouge, ses explosions peuvent provoquer des dégâts importants sur plusieurs unités simultanément.
 
-Par exemple, lors d'une première bataille observée :
+Cette situation contribue à réduire rapidement le nombre d'unités rouges actives.
+
+---
+
+### 12.5. Déséquilibre entre précision et volume de feu
+
+Les premières simulations montrent que l'artillerie rouge peut obtenir une précision supérieure à celle de l'artillerie verte.
+
+Exemple observé lors d'une bataille :
 
 ```text
 RED Artillery Accuracy   : environ 74 %
 GREEN Artillery Accuracy : environ 54 %
 ```
 
-Cela indique que la logique de ciblage spécifique des tourelles rouges améliore effectivement leur efficacité individuelle.
+Cependant, l'armée verte peut effectuer un nombre de tirs nettement supérieur grâce à son avantage numérique et à la survie plus longue de ses unités.
 
-Cependant, l'armée rouge continue actuellement à perdre rapidement certaines batailles.
+Une meilleure précision individuelle ne garantit donc pas encore une meilleure performance globale de l'armée rouge.
 
-Les résultats montrent que les principaux problèmes ne semblent donc plus venir uniquement de la précision de l'artillerie, mais principalement :
+---
 
-- De la faible survie des drones rouges.
-- De leur regroupement excessif.
-- Des dégâts de zone provoqués par l'artillerie verte.
-- Des périodes d'inactivité de certains drones.
-- De la précision encore insuffisante de certains missiles.
-- De la supériorité numérique initiale de l'armée verte.
+### 12.6. Faible survie globale de l'armée rouge
 
-Les prochaines améliorations doivent donc principalement se concentrer sur les drones rouges.
+Lors de certaines simulations, l'armée rouge est entièrement détruite alors que l'armée verte conserve encore une grande partie de ses unités.
+
+Un exemple observé donne approximativement :
+
+```text
+RED
+Drones survivants : 0
+Tourelles survivantes : 0
+Santé restante : 0
+
+GREEN
+Drones survivants : 18
+Tourelles survivantes : 5
+Santé restante : plus de 1000
+```
+
+Ces résultats montrent que plusieurs problèmes de comportement restent présents malgré l'amélioration de l'efficacité de l'artillerie rouge.
 
 ---
 
@@ -549,7 +548,7 @@ Le projet est réalisé par une équipe de **trois étudiants**.
 |---|---|
 | **LIU Yao** | `ArmyManagerRed`, stratégie globale, allocation des cibles et coordination de l'armée |
 | **Ruofan** | `DroneRedBehavior`, sélection des cibles et logique de combat des drones rouges |
-| **CHENG Zihao** | `TurretRedBehavior`, logique tactique de l'artillerie rouge, réduction du overkill, instrumentation des tirs et système global de statistiques |
+| **CHENG Zihao** | `TurretRedBehavior`, logique tactique de l'artillerie rouge, réduction du overkill, instrumentation et système global de statistiques |
 
 ### Contributions de CHENG Zihao
 
@@ -562,7 +561,7 @@ Les éléments suivants ont notamment été réalisés :
 - Prise en compte des dégâts déjà en vol.
 - Réduction du overkill entre plusieurs tourelles rouges.
 - Changement automatique de cible lorsqu'une cible est déjà suffisamment couverte.
-- Sélection des drones lents.
+- Prise en compte des drones lents.
 - Détection des groupes de drones.
 - Exploitation des dégâts de zone de l'artillerie.
 - Participation à l'intégration de la logique d'artillerie avec `ArmyManagerRed`.
@@ -582,7 +581,7 @@ Les éléments suivants ont notamment été réalisés :
 - Enregistrement de la durée du combat.
 - Détection et affichage de l'armée gagnante.
 - Développement d'une interface de résultats affichée automatiquement à la fin de chaque bataille.
-- Participation à l'analyse des résultats et à l'identification des problèmes actuels.
+- Mise en place d'outils permettant d'identifier objectivement les problèmes actuels à partir des résultats de combat.
 
 L'intégration, les tests, la validation et le débogage restent réalisés collectivement par l'équipe.
 
@@ -635,10 +634,7 @@ Tâche Behavior Designer permettant aux drones rouges de demander une cible à `
 
 ### `RedDroneShoot.cs`
 
-Tâche spécifique aux drones rouges permettant :
-
-- De tirer sur la cible sélectionnée.
-- D'enregistrer les dégâts potentiels des missiles.
+Tâche spécifique aux drones rouges permettant de tirer sur la cible sélectionnée et d'enregistrer les dégâts potentiels des missiles.
 
 ### `TurretRedBehavior.asset`
 
@@ -658,12 +654,9 @@ Le projet vise à obtenir :
 - Une meilleure coordination entre les unités.
 - Une réduction des attaques inefficaces.
 - Une utilisation plus efficace des projectiles d'artillerie.
-- Une amélioration de la survie des drones rouges.
-- Une réduction du regroupement des drones.
-- Une meilleure précision des missiles.
 - Des arbres de comportement structurés et faciles à maintenir.
 - Une fonctionnalité supplémentaire opérationnelle.
-- Des résultats statistiques permettant d'évaluer objectivement chaque amélioration.
+- Des résultats statistiques permettant d'évaluer objectivement les améliorations.
 
 Les résultats définitifs devront être confirmés par les simulations finales.
 
@@ -675,8 +668,8 @@ Les résultats définitifs devront être confirmés par les simulations finales.
 - **C#** : langage de programmation.
 - **Behavior Designer** : conception des arbres de comportement.
 - **Git / GitHub** : gestion du code source et collaboration.
-- **TextMeshPro** : affichage de l'interface et des résultats.
-- **Unity UI** : interface de résultats de fin de bataille.
+- **TextMeshPro** : affichage des résultats.
+- **Unity UI** : interface de fin de bataille.
 - **Statistiques de simulation** : analyse des performances des deux armées.
 
 ---
@@ -689,25 +682,8 @@ La partie concernant les tourelles d'artillerie rouges dispose déjà d'une sél
 
 Un système global de statistiques permet maintenant de mesurer automatiquement les performances des drones et de l'artillerie des deux armées.
 
-Les premières simulations montrent que l'artillerie rouge peut obtenir une précision supérieure à celle de l'artillerie verte. Cependant, les performances globales restent fortement limitées par le comportement actuel des drones rouges.
+Les premières simulations montrent que l'artillerie rouge peut obtenir une bonne précision, mais plusieurs problèmes restent observables dans le comportement global de l'armée rouge, notamment au niveau des drones.
 
-Les prochaines priorités concernent donc principalement :
+Les statistiques et les observations de combat permettent désormais d'identifier ces problèmes objectivement. Les solutions techniques correspondantes restent à définir et à implémenter par les membres responsables des différentes parties du projet.
 
-- La dispersion des drones.
-- La réduction des regroupements.
-- L'amélioration de la précision des missiles.
-- La correction des périodes d'inactivité.
-- La fonctionnalité supplémentaire.
-- Les simulations finales sur 20 batailles valides.
-
-Le développement reste guidé par une démarche expérimentale :
-
-```text
-Modifier
-→ Tester
-→ Mesurer
-→ Comparer
-→ Conserver ou améliorer
-```
-
-Cette démarche permet de vérifier objectivement l'impact de chaque modification sur les performances de l'armée rouge.
+Les résultats définitifs seront évalués à partir des simulations finales sur 20 batailles valides.
