@@ -65,14 +65,34 @@ public class Missile : MonoBehaviour
         else Destroy(gameObject);
     }
 
-	private void OnTriggerEnter(Collider other)
-	{
+    private void OnTriggerEnter(Collider other)
+    {
         if (!other.CompareTag(gameObject.tag))
         {
-            ExplosionManager.Instance.SpawnExplosionOnObject(m_Transform.position,m_Transform.forward,other.gameObject,ExplosionSize.small);
-            Destroy(gameObject);
+            Health health =
+                other.GetComponentInChildren<Health>();
 
-            other.GetComponentInChildren<Health>()?.InflictDamage(m_DamagePoints);
+            // 只有真正撞到敌方单位时，才算一次命中
+            if (health != null)
+            {
+                BattleStatsManager.Instance?
+                    .RegisterDroneHit(
+                        gameObject.tag
+                    );
+
+                health.InflictDamage(
+                    m_DamagePoints
+                );
+            }
+
+            ExplosionManager.Instance
+                .SpawnExplosionOnObject(
+                    m_Transform.position,
+                    m_Transform.forward,
+                    other.gameObject,
+                    ExplosionSize.small
+                );
+            Destroy(gameObject);
         }
     }
 }

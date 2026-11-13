@@ -19,7 +19,12 @@ public class Drone : ArmyElement,IShoot
 
 	public void Shoot()
 	{
-		//Debug.Break();
+		BattleStatsManager.Instance?
+			.RegisterDroneShots(
+				gameObject.tag,
+				m_MissileSpawnPos.Length
+			);
+
 		for (int i = 0; i < m_MissileSpawnPos.Length; i++)
 		{
 			Transform missileSpawnPos = m_MissileSpawnPos[i];

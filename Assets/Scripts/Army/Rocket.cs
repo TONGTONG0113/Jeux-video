@@ -65,7 +65,7 @@ public class Rocket : MonoBehaviour
             travelTime;
 
 
-        float elapsedTime = 0;
+        float elapsedTime = 0f;
 
 
         Vector3 startVelocity =
@@ -74,7 +74,7 @@ public class Rocket : MonoBehaviour
                 startPos -
                 Physics.gravity *
                 sqrTravelTime *
-                .5f
+                0.5f
             )
             /
             travelTime;
@@ -109,7 +109,7 @@ public class Rocket : MonoBehaviour
             if (
                 m_Rigidbody
                     .linearVelocity
-                    .sqrMagnitude > 0
+                    .sqrMagnitude > 0f
             )
             {
                 m_Rigidbody.MoveRotation(
@@ -127,9 +127,6 @@ public class Rocket : MonoBehaviour
         }
 
 
-        Destroy(gameObject);
-
-
         ExplosionManager.Instance
             .SpawnExplosionOnObject(
                 m_Transform.position,
@@ -141,10 +138,6 @@ public class Rocket : MonoBehaviour
             );
 
 
-        // =====================================================
-        // DAMAGE + HIT STATISTICS
-        // =====================================================
-
         Collider[] hitColliders =
             Physics.OverlapSphere(
                 endPos,
@@ -153,21 +146,15 @@ public class Rocket : MonoBehaviour
 
 
         /*
-         * One unit can theoretically have several colliders.
-         *
-         * We use a HashSet only for STATISTICS so that the
-         * same unit isn't counted several times.
-         *
-         * Damage behaviour itself remains the same as
-         * the original project.
+         * A unit may have several colliders.
+         * HashSet avoids counting the same unit
+         * several times in the statistics.
          */
         HashSet<Health> uniqueUnitsHit =
             new HashSet<Health>();
 
 
-        foreach (
-            var item in hitColliders
-        )
+        foreach (var item in hitColliders)
         {
             if (
                 !item.gameObject
@@ -177,20 +164,16 @@ public class Rocket : MonoBehaviour
             )
             {
                 Health health =
-                    item.GetComponentInChildren<
-                        Health
-                    >();
+                    item.GetComponentInChildren<Health>();
 
 
                 if (health != null)
                 {
-                    // Statistics only.
                     uniqueUnitsHit.Add(
                         health
                     );
 
 
-                    // Original damage behaviour.
                     health.InflictDamage(
                         m_DamagePoints
                     );
@@ -199,12 +182,14 @@ public class Rocket : MonoBehaviour
         }
 
 
-        // Tell the statistics system whether
-        // this artillery shell actually hit something.
-        TurretAccuracyStats.Instance?
-            .RegisterExplosion(
+        // Global artillery statistics
+        BattleStatsManager.Instance?
+            .RegisterTurretExplosion(
                 gameObject.tag,
                 uniqueUnitsHit.Count
             );
+
+
+        Destroy(gameObject);
     }
 }

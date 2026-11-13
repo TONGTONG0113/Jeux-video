@@ -43,16 +43,11 @@ public class Turret : ArmyElement
 
     public void Shoot(Vector3 targetPos)
     {
-        /*
-         * Statistics:
-         * register one artillery shot for this army.
-         *
-         * We use the turret's existing Unity tag,
-         * so this works for both RED and GREEN
-         * without hard-coding army names.
-         */
-        TurretAccuracyStats.Instance?
-            .RegisterShot(gameObject.tag);
+        // Global battle statistics
+        BattleStatsManager.Instance?
+            .RegisterTurretShot(
+                gameObject.tag
+            );
 
 
         Transform spawnPos =
@@ -72,6 +67,10 @@ public class Turret : ArmyElement
             );
 
 
+        // Keep the rocket on the same army tag as the turret.
+        newRocketGO.tag = gameObject.tag;
+
+
         Rocket rocket =
             newRocketGO.GetComponent<Rocket>();
 
@@ -80,10 +79,6 @@ public class Turret : ArmyElement
             targetPos,
             m_RocketTravelDuration
         );
-
-
-        // Preserve the original army identification.
-        newRocketGO.tag = gameObject.tag;
     }
 
 
