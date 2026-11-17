@@ -1,99 +1,152 @@
 using UnityEngine;
 using BehaviorDesigner.Runtime;
 using BehaviorDesigner.Runtime.Tasks;
-using UnityEngine.AI;
 
-[TaskCategory("MyTasks")]
-[TaskDescription("Selects the best tactical target for a RED drone. Also handles retreat logic.")]
+/// <summary>
+/// Sélection de cible des drones rouges : TIR CONCENTRÉ (focus fire).
+///
+/// Constat en simulation : avec la répartition "anti-regroupement", les dégâts
+/// rouges étaient étalés sur trop de cibles (490 dégâts de missiles pour 3 drones
+/// verts détruits). Or chaque drone vert détruit, c'est 2 missiles de moins
+/// tirés sur nous à chaque cycle (loi de Lanchester).
+///
+///  1. On garde sa cible jusqu'à sa destruction (pas de changement toutes les 2 s),
+///     sauf si elle est déjà condamnée par les missiles en vol ou trop loin.
+///  2. Tant qu'il reste plus de 2 drones verts : uniquement des drones.
+///     Ensuite, ArmyManagerRed est prioritaire pour les tourelles presque détruites.
+///  3. Sinon : drone vert le plus "rentable" (proche, déjà attaqué par d'autres
+///     drones rouges, déjà blessé), puis tourelle verte la plus faible.
+///
+/// Corrections précédentes conservées : portée illimitée (plus de drones inactifs
+/// faute de cible à moins de 50 m), suppression de la retraite vers (0,0,0).
+/// </summary>
+[TaskCategory("MyTasks/Red Drone")]
+[TaskDescription("RED drone: focus-fire target selection (keeps its target until it dies, avoids overkill).")]
 public class SelectRedDroneTarget : Action
 {
-    IArmyElement m_ArmyElement;
-    NavMeshAgent m_Agent;
-
     public SharedTransform target;
-    public SharedFloat minRadius = 5f;
-    public SharedFloat maxRadius = 50f;
-    public SharedFloat retargetCooldown = 2.0f;
 
-    // 【新增】撤退坐标，在行为树面板里把红方大后方的一个坐标填进来
-    public SharedVector3 retreatPosition; 
+    [BehaviorDesigner.Runtime.Tasks.Tooltip("Au-delà de cette distance, on abandonne la cible actuelle")]
+    public SharedFloat maxKeepDistance = 35f;
+    [BehaviorDesigner.Runtime.Tasks.Tooltip("Nombre max d'alliés comptés dans le bonus de concentration")]
+    public SharedInt maxAttackersBonus = 3;
+    [BehaviorDesigner.Runtime.Tasks.Tooltip("Les drones rouges n'attaquent les tourelles que s'il reste au plus N drones verts")]
+    public SharedInt attackTurretsWhenEnemyDronesAtMost = 2;
 
-    float m_NextRetargetTime = 0f;
-    Vector3 m_LastPosition;
-    float m_LastCheckTime;
-    float m_StuckThreshold = 0.5f;
+    [BehaviorDesigner.Runtime.Tasks.Tooltip("STRATÉGIE : true = assaut des tourelles vertes d'abord (dans leur angle mort < 5 m), false = drones verts d'abord")]
+    public SharedBool turretsFirst = false;
+    [BehaviorDesigner.Runtime.Tasks.Tooltip("Mode tourelles d'abord : nombre max de drones rouges par tourelle verte")]
+    public SharedInt maxDronesPerTurret = 2;
+    [BehaviorDesigner.Runtime.Tasks.Tooltip("STRATÉGIE MIXTE : nombre de drones \"raiders\" envoyés sur les tourelles vertes, les autres attaquent les drones (0 = drones d'abord)")]
+    public SharedInt raidersCount = 4;
+
+    IArmyElement m_ArmyElement;
 
     public override void OnAwake()
     {
         m_ArmyElement = (IArmyElement)GetComponent(typeof(IArmyElement));
-        m_Agent = GetComponent<NavMeshAgent>();
-        m_LastPosition = transform.position;
-        m_LastCheckTime = Time.time;
     }
 
     public override TaskStatus OnUpdate()
     {
-        if (m_ArmyElement.ArmyManager == null) return TaskStatus.Running;
+        // La référence à l'armée n'est injectée qu'après la première frame.
+        if (m_ArmyElement == null || m_ArmyElement.ArmyManager == null) return TaskStatus.Running;
 
-        ArmyManagerRed manager = m_ArmyElement.ArmyManager as ArmyManagerRed;
-        if (manager == null) return TaskStatus.Failure;
+        // 1. Garder la cible actuelle tant qu'elle vaut le coup
+        // Tant que les drones verts sont nombreux, ils sont la seule priorité :
+        // ce sont eux qui détruisent nos drones (≈ 600 dégâts de missiles par bataille).
+        // Constat en simulation : environ la moitié des dégâts de nos missiles partait
+        // dans des tourelles vertes "presque détruites", pendant que les drones verts
+        // survivaient. Les tourelles vertes sont laissées à notre artillerie.
+        bool dronesOnly = RedDroneTactics.CountEnemyDrones(gameObject.tag) > attackTurretsWhenEnemyDronesAtMost.Value;
 
-        // 【逻辑】残血撤退
-        // 假设无人机满血50，低于 10 血开始撤退
-        if (m_ArmyElement.Health < 10f && retreatPosition != null && m_Agent != null)
+        // ---------------------------------------------------------
+        // STRATÉGIE "TOURELLES D'ABORD"
+        // Les tourelles vertes (9 contre 6) détruisent notre artillerie en ~20 s
+        // et infligent ~700 dégâts par bataille. Elles ne peuvent pas viser
+        // une unité à moins de 5 m (Min Radius) et ciblent en priorité nos tourelles :
+        // un drone rouge collé à une tourelle verte est donc peu exposé à l'artillerie.
+        // ---------------------------------------------------------
+        bool raider = turretsFirst.Value ||
+                      RedDroneTactics.IsRaider(gameObject, gameObject.tag, raidersCount.Value);
+
+        if (raider && RedDroneTactics.CountEnemyTurrets(gameObject.tag) > 0)
         {
-            target.Value = null; // 清空目标，不打了
-            m_Agent.SetDestination(retreatPosition.Value);
-            
-            // 如果已经退到了撤退点，就不管了，让行为树其他节点处理（比如去回血）
-            if (Vector3.Distance(transform.position, retreatPosition.Value) < 3f)
+            Transform cur = target.Value;
+            if (cur != null && cur.GetComponent<Turret>() != null &&
+                RedDroneTactics.IsAlive(cur) && RedDroneTactics.GetExpectedHealth(cur) > 0f)
             {
-                return TaskStatus.Failure; 
+                RedDroneTactics.SetDroneTarget(gameObject, cur);
+                return TaskStatus.Success;
             }
-            return TaskStatus.Running;
+
+            Transform turret = RedDroneTactics.SelectTurretRushTarget(transform, gameObject.tag, maxDronesPerTurret.Value);
+            if (turret != null)
+            {
+                target.Value = turret;
+                RedDroneTactics.SetDroneTarget(gameObject, turret);
+                return TaskStatus.Success;
+            }
+            // Toutes les tourelles déjà condamnées par les missiles en vol : on passe aux drones.
         }
 
-        // 卡住检测
-        if (Time.time - m_LastCheckTime > 1.0f)
-        {
-            float movedDistance = Vector3.Distance(transform.position, m_LastPosition);
-            if (movedDistance < m_StuckThreshold && target.Value != null)
-            {
-                target.Value = null;
-                m_NextRetargetTime = 0f;
-            }
-            m_LastPosition = transform.position;
-            m_LastCheckTime = Time.time;
-        }
+        Transform current = target.Value;
+        if (dronesOnly && current != null && current.GetComponent<Turret>() != null) current = null;
 
-        if (IsCurrentTargetStillValid() && Time.time < m_NextRetargetTime)
+        if (RedDroneTactics.IsAlive(current) &&
+            RedDroneTactics.GetExpectedHealth(current) > 0f &&
+            RedDroneTactics.FlatDistance(transform.position, current.position) <= maxKeepDistance.Value)
         {
+            RedDroneTactics.SetDroneTarget(gameObject, current);
             return TaskStatus.Success;
         }
 
-        GameObject selected = manager.RequestTarget(
-            ArmyManagerRed.RequesterType.Drone,
-            transform.position,
-            minRadius.Value,
-            maxRadius.Value);
-
-        if (selected == null)
+        // 2. Tourelle verte presque détruite signalée par le chef d'état-major
+        Transform selected = null;
+        ArmyManagerRed manager = m_ArmyElement.ArmyManager as ArmyManagerRed;
+        if (manager != null && !dronesOnly)
         {
-            target.Value = null;
-            return TaskStatus.Failure;
+            GameObject fromManager = manager.RequestTarget(
+                ArmyManagerRed.RequesterType.Drone, transform.position, 0f, 1000f);
+
+            if (fromManager != null && fromManager.GetComponent<Turret>() != null)
+                selected = fromManager.transform;
         }
 
-        target.Value = selected.transform;
-        m_NextRetargetTime = Time.time + retargetCooldown.Value;
-        return TaskStatus.Success;
+        // 3. Tir concentré
+        if (selected == null)
+            selected = RedDroneTactics.SelectFocusTarget(transform, gameObject.tag, maxAttackersBonus.Value);
+
+        // Mode "drones uniquement" : si tous les drones verts sont déjà condamnés
+        // par des missiles en vol, on garde sa cible actuelle plutôt qu'une tourelle.
+        if (dronesOnly && selected != null && selected.GetComponent<Turret>() != null)
+            selected = RedDroneTactics.IsAlive(target.Value) ? target.Value : null;
+
+        // 4. Secours
+        if (selected == null)
+        {
+            GameObject nearest = RedDroneTactics.FindNearestEnemy(transform.position, gameObject.tag);
+            if (nearest != null) selected = nearest.transform;
+        }
+
+        target.Value = selected;
+        RedDroneTactics.SetDroneTarget(gameObject, selected);
+        return selected != null ? TaskStatus.Success : TaskStatus.Failure;
     }
 
-    bool IsCurrentTargetStillValid()
+    public override void OnBehaviorComplete()
     {
-        if (target.Value == null) return false;
-        GameObject go = target.Value.gameObject;
-        if (go == null || !go.activeInHierarchy) return false;
-        IArmyElement element = go.GetComponent<IArmyElement>();
-        return element != null && element.Health > 0f;
+        RedDroneTactics.SetDroneTarget(gameObject, null);
+    }
+
+    public override void OnReset()
+    {
+        target = null;
+        maxKeepDistance = 35f;
+        maxAttackersBonus = 3;
+        attackTurretsWhenEnemyDronesAtMost = 2;
+        turretsFirst = false;
+        maxDronesPerTurret = 2;
+        raidersCount = 4;
     }
 }
