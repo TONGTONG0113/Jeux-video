@@ -33,21 +33,43 @@ Entry
         │   ├── Is Grenade Threatened          (Conditional)
         │   └── Red Drone Evade Grenade        (Action)
         └── Sequence "Attaque"
-            ├── Select Red Drone Target        (cible via ArmyManagerRed)
+            ├── Select Red Drone Target        (rôle + cible : focus fire / raiders)
             ├── Red Drone Engage               (position de tir espacée)
             ├── Red Drone Aim                  (rotation vers le point anticipé)
             ├── Red Drone Shoot                (tir convergent)
-            └── Wait (aléatoire 1 à 2 s, Annexe A)
+            └── ParallelSelector "Recharge + Strafe"
+                ├── Wait (aléatoire 1 à 2 s, Annexe A)
+                └── Red Drone Strafe           (déplacement latéral pendant le Wait)
 ```
 
 Grâce à l'abort *Lower Priority*, la condition d'esquive est réévaluée à chaque frame pendant toute la branche d'attaque, y compris pendant le `Wait`. Dès qu'une grenade va tomber sur le drone, l'attaque est interrompue et le drone esquive.
+
+Le `Wait` de l'Annexe A est conservé, mais il s'exécute en parallèle d'un déplacement latéral. Les drones verts visent la position actuelle de leur cible, sans anticipation : un drone rouge qui bouge pendant sa recharge leur fait rater davantage de tirs. La cadence de tir n'est pas modifiée.
+
+## 3 bis. Démarche itérative : décisions prises à partir des simulations
+
+Chaque modification a été validée par les statistiques de `BattleStatsManager`.
+
+| Version | Observation | Décision |
+|---|---|---|
+| Arbre de comportement par défaut | Arbre identique à celui de l'armée verte | Nouvel arbre (sections 3 et 4) |
+| V1 : positions de tir et tir convergent | Précision rouge de 72 % contre 35 % pour le vert, mais 136 tirs contre 348. 490 dégâts de missiles pour seulement 3 drones verts détruits : les dégâts sont trop dispersés | **Tir concentré** : on garde sa cible jusqu'à sa destruction, avec un bonus si d'autres drones rouges l'attaquent déjà ou si elle est déjà blessée. On tire dès 20 m au lieu de se repositionner |
+| V2 : tir concentré | Jusqu'à 318 tirs, 17 drones verts détruits dans la meilleure bataille | **Strafe** pendant le Wait |
+| V3 : strafe | Précision des missiles verts : de 35-42 % à 25-33 %. Mais environ la moitié de nos dégâts part dans des tourelles « presque détruites » signalées par ArmyManagerRed | Tant qu'il reste plus de 2 drones verts, nos drones ne visent que des drones. Priorité aux drones verts qui attaquent nos tourelles |
+| V4 : tourelles d'abord pour tous les drones (test) | 7 tourelles vertes détruites sur 9 (précision 92,6 %), mais 18 drones verts sur 19 survivent | **Rejeté** : ce sont les drones verts qui détruisent nos drones |
+| **V5 : stratégie mixte (retenue)** | 4 « raiders » sur les tourelles vertes, 9 drones sur les drones verts. Il reste à l'armée verte 1 tourelle, 4 à 6 drones et 185 à 255 PV sur 1850 ; 255 à 283 missiles rouges touchent leur cible | Configuration actuelle |
+
+**Stratégie mixte (raiders).** Au début de la bataille, les `raidersCount` drones rouges les plus proches des tourelles vertes (4 par défaut) attaquent les tourelles. Ils se placent à moins de 5 m, dans l'angle mort de la tourelle (Min Radius de 5 m), et sont au maximum 2 par tourelle. Les autres drones appliquent le tir concentré sur les drones verts. Quand toutes les tourelles vertes sont détruites, les raiders rejoignent le groupe principal.
+
+Paramètres réglables dans Behavior Designer (tâche *Select Red Drone Target*) : `raidersCount` (0 = drones d'abord), `maxDronesPerTurret`, `turretsFirst`, `attackTurretsWhenEnemyDronesAtMost`.
 
 ## 4. Scripts C#
 
 | Fichier | Rôle |
 |---|---|
 | `Army/RedDroneTactics.cs` *(nouveau)* | Outils partagés : tir anticipé (profil de vitesse du missile : départ à 10 m/s, accélération 40 m/s², vitesse max 20 m/s), ligne de tir (raycast, alliés traversés, obstacles bloquants), prédiction d'impact des grenades (résolution balistique avec la hauteur du terrain, 3 itérations pour les terrasses), réservation des positions de tir, choix de la position de tir et du point de fuite. |
-| `MyBehaviorTrees/SelectRedDroneTarget.cs` *(réécrit)* | Demande la cible à `ArmyManagerRed.RequestTarget` avec une portée de 1000 m. Si le manager ne renvoie rien, prend l'ennemi le plus proche. La retraite cassée est supprimée. |
+| `MyBehaviorTrees/SelectRedDroneTarget.cs` *(réécrit)* | Attribution des rôles (raiders / groupe principal) et choix de la cible par tir concentré. Les tourelles presque détruites signalées par `ArmyManagerRed` ne sont prises en compte que s'il reste au plus 2 drones verts. Si aucune cible n'est trouvée, prend l'ennemi le plus proche, sans limite de portée. La retraite cassée est supprimée. |
+| `MyBehaviorTrees/RedDroneStrafe.cs` *(nouveau)* | Déplacement latéral pendant le Wait (alternance gauche / droite, distance de 8 à 18 m de la cible, espacement avec les alliés, évitement des grenades). |
 | `MyBehaviorTrees/RedDroneEngage.cs` *(nouveau)* | Remplace `MySeek`. Cherche une position de tir sur 3 anneaux × 12 angles autour de la cible, notée selon : coût du trajet, espacement avec les drones rouges (positions et destinations réservées), groupes de drones verts, zones d'impact prévues, ligne de tir. Recalcule le chemin si la cible bouge. Détecte les chemins partiels et les blocages. Timeout de 6 s : la tâche ne peut plus rester bloquée. |
 | `MyBehaviorTrees/RedDroneAim.cs` *(nouveau)* | Même Slerp que `MySlerpRotateAroundY` (coefficient 4, angle d'arrivée 5°), mais orienté vers le point d'interception anticipé. |
 | `MyBehaviorTrees/RedDroneShoot.cs` *(réécrit)* | Tir convergent via `Drone.ShootAt`. Enregistre les dégâts en vol (anti-overkill). Impose au moins 1 s entre deux salves, pour que l'esquive ne permette jamais de tirer plus vite que l'IA d'origine. |
@@ -69,4 +91,5 @@ Grâce à l'abort *Lower Priority*, la condition d'esquive est réévaluée à c
 - La prédiction d'impact suppose que la grenade vise le pivot d'un drone (environ 1 m au-dessus du sol). L'erreur horizontale qui en résulte (moins de 1 m) est couverte par la marge de 2 m du rayon de danger.
 - `Drone.Heal()` (unité Medic) lit par réflexion le champ `m_Health`, qui est un composant `Health` et non un `float` : le cast lèvera une exception. Il faudrait ajouter une méthode `Heal()` dans `Health.cs`. Ce point est signalé à LIU Yao.
 - `ArmyManagerRed.GetBestTargetForRedDrone` ne renvoie aucune tourelle tant qu'elle n'est pas affaiblie. Quand il ne reste que des tourelles vertes en pleine santé, c'est le secours de `SelectRedDroneTarget` qui prend le relais.
-- Paramètres à affiner pendant les 20 simulations : `preferredRangeVsDrone`, `allySpacing`, `reactionTime`.
+- Paramètres non encore optimisés : `raidersCount` (3, 4 ou 5), `preferredRangeVsDrone`, `allySpacing`, `reactionTime`.
+- L'artillerie rouge (87 à 100 % de précision) n'effectue que 31 à 45 tirs par bataille : elle est détruite en environ 20 s par les 9 tourelles vertes. C'est désormais le principal levier d'amélioration (partie TurretRedBehavior et ArmyManagerRed).
