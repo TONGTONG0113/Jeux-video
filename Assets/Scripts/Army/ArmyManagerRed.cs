@@ -7,82 +7,47 @@ using UnityEngine.AI;
 public class ArmyManagerRed : ArmyManager
 {
     // =========================================================
-    // ARTILLERY CONFIGURATION
+    // ARTILLERY & MISSILE CONFIGURATION
     // =========================================================
-
     const float ARTILLERY_DAMAGE = 10f;
     const float PENDING_SHOT_LIFETIME = 4.5f;
-
-    // Missile constants for RED drone shots.
     const float MISSILE_DAMAGE = 5f;
     const float MISSILE_LIFETIME = 4.5f;
 
-    [SerializeField]
-    float m_SlowDroneSpeedThreshold = 1.0f;
-
-    [SerializeField]
-    float m_DroneClusterRadius = 5f;
-
-    [SerializeField]
-    int m_MinDroneClusterSize = 2;
-
-    [SerializeField]
-    float m_DroneFinishOffHealthRatio = 0.5f;
-
-    [SerializeField]
-    float m_DroneFinishOffAbsHealth = 5f;
+    [SerializeField] float m_DroneFinishOffHealthRatio = 0.5f;
+    [SerializeField] float m_DroneFinishOffAbsHealth = 5f;
 
     // =========================================================
-    // PENDING DAMAGE
+    // PENDING DAMAGE (在途伤害追踪)
     // =========================================================
-
     class PendingShot
     {
         public IArmyElement Target;
         public float Damage;
         public float ExpireTime;
     }
-
     readonly List<PendingShot> m_PendingShots = new List<PendingShot>();
-
-    // =========================================================
-    // REGISTER ARTILLERY SHOT
-    // =========================================================
 
     public void RegisterPendingArtilleryShot(GameObject target)
     {
         RegisterPendingShot(target, ARTILLERY_DAMAGE, PENDING_SHOT_LIFETIME);
     }
 
-    // =========================================================
-    // REGISTER DRONE MISSILES
-    // =========================================================
-
     public void RegisterPendingMissileShot(GameObject target, int missileCount = 2)
     {
         if (target == null) return;
-
         int count = Mathf.Max(1, missileCount);
-
         for (int i = 0; i < count; i++)
-        {
             RegisterPendingShot(target, MISSILE_DAMAGE, MISSILE_LIFETIME);
-        }
     }
-
-    // =========================================================
-    // GENERIC PENDING SHOT
-    // =========================================================
 
     void RegisterPendingShot(GameObject target, float damage, float lifetime)
     {
         if (target == null) return;
-
         IArmyElement element = target.GetComponent<IArmyElement>();
         if (element == null) return;
 
         CleanupPendingShots();
-
         m_PendingShots.Add(new PendingShot
         {
             Target = element,
@@ -110,13 +75,7 @@ public class ArmyManagerRed : ArmyManager
     // =========================================================
     // UNIFIED TARGET REQUEST
     // =========================================================
-
-    public enum RequesterType
-    {
-        Drone,
-        Turret,
-        Medic
-    }
+    public enum RequesterType { Drone, Turret, Medic }
 
     public GameObject RequestTarget(
         RequesterType requesterType,
@@ -128,13 +87,10 @@ public class ArmyManagerRed : ArmyManager
         {
             case RequesterType.Turret:
                 return GetBestTargetForRedTurret(null, requesterPos, minRadius, maxRadius);
-
             case RequesterType.Drone:
                 return GetBestTargetForRedDrone(requesterPos, minRadius, maxRadius);
-
             case RequesterType.Medic:
                 return GetBestHealTarget(requesterPos, minRadius, maxRadius);
-
             default:
                 return null;
         }
@@ -143,7 +99,6 @@ public class ArmyManagerRed : ArmyManager
     // =========================================================
     // RED ARTILLERY TARGET SELECTION
     // =========================================================
-
     public GameObject GetBestTargetForRedTurret(
         GameObject requestingTurret,
         Vector3 turretPosition,
@@ -152,14 +107,13 @@ public class ArmyManagerRed : ArmyManager
     {
         CleanupPendingShots();
 
-        // PRIORITY 1: ENEMY ARTILLERY
+        // 优先级1：敌方炮塔
         List<Turret> enemyTurretsInRange = GetAllEnemiesOfType<Turret>(false)
             .Where(turret =>
             {
                 float distance = Vector3.Distance(turretPosition, turret.transform.position);
                 return distance > minRadius && distance < maxRadius;
-            })
-            .ToList();
+            }).ToList();
 
         Turret bestEnemyTurret = enemyTurretsInRange
             .Where(turret => GetExpectedRemainingHealth(turret) > 0f)
@@ -169,55 +123,32 @@ public class ArmyManagerRed : ArmyManager
 
         if (bestEnemyTurret != null) return bestEnemyTurret.gameObject;
 
-        // PRIORITY 2: ATTACK DRONES
+        // 优先级2：敌方无人机
         List<Drone> enemyDronesInRange = GetAllEnemiesOfType<Drone>(false)
             .Where(drone =>
             {
                 float distance = Vector3.Distance(turretPosition, drone.transform.position);
                 return distance > minRadius && distance < maxRadius;
-            })
-            .ToList();
+            }).ToList();
 
-        // PRIORITY 2A: SLOW / STATIONARY DRONES
+        // 优先级2A：慢速无人机
         List<Drone> slowDrones = enemyDronesInRange
             .Where(drone =>
             {
                 NavMeshAgent agent = drone.GetComponent<NavMeshAgent>();
                 if (agent == null) return false;
-                return agent.velocity.magnitude <= m_SlowDroneSpeedThreshold;
-            })
-            .ToList();
+                return agent.velocity.magnitude <= 1.0f;
+            }).ToList();
 
-        // PRIORITY 2B: DENSE SLOW-DRONE CLUSTER
-        if (slowDrones.Count >= m_MinDroneClusterSize)
+        if (slowDrones.Count > 0)
         {
-            Drone bestClusterCenter = null;
-            int bestClusterSize = 0;
-
-            foreach (Drone candidate in slowDrones)
-            {
-                int clusterSize = slowDrones.Count(other =>
-                    Vector3.Distance(candidate.transform.position, other.transform.position) <= m_DroneClusterRadius);
-
-                if (clusterSize > bestClusterSize)
-                {
-                    bestClusterSize = clusterSize;
-                    bestClusterCenter = candidate;
-                }
-            }
-
-            if (bestClusterCenter != null && bestClusterSize >= m_MinDroneClusterSize)
-                return bestClusterCenter.gameObject;
+            Drone nearestSlowDrone = slowDrones
+                .OrderBy(drone => Vector3.Distance(turretPosition, drone.transform.position))
+                .FirstOrDefault();
+            if (nearestSlowDrone != null) return nearestSlowDrone.gameObject;
         }
 
-        // PRIORITY 2C: SINGLE SLOW DRONE
-        Drone nearestSlowDrone = slowDrones
-            .OrderBy(drone => Vector3.Distance(turretPosition, drone.transform.position))
-            .FirstOrDefault();
-
-        if (nearestSlowDrone != null) return nearestSlowDrone.gameObject;
-
-        // PRIORITY 3: NEAREST DRONE
+        // 优先级3：最近的无人机
         Drone fallbackDrone = enemyDronesInRange
             .OrderBy(drone => Vector3.Distance(turretPosition, drone.transform.position))
             .FirstOrDefault();
@@ -228,14 +159,13 @@ public class ArmyManagerRed : ArmyManager
     }
 
     // =========================================================
-    // RED DRONE TARGET SELECTION (ANTI-CLUSTERING)
+    // RED DRONE TARGET SELECTION
     // =========================================================
-
     GameObject GetBestTargetForRedDrone(Vector3 dronePos, float minRadius, float maxRadius)
     {
         CleanupPendingShots();
 
-        // PRIORITY 1: FINISH WEAKENED ENEMY TURRETS
+        // 优先级1：收尾残血炮塔
         Turret finishableTurret = GetAllEnemiesOfType<Turret>(false)
             .Where(turret =>
             {
@@ -255,57 +185,20 @@ public class ArmyManagerRed : ArmyManager
 
         if (finishableTurret != null) return finishableTurret.gameObject;
 
-        // PRIORITY 2: SMART DRONE SELECTION (ATTACK ISOLATED TARGETS)
-        var enemyDrones = GetAllEnemiesOfType<Drone>(false)
-            .Where(drone =>
-            {
-                float distance = Vector3.Distance(dronePos, drone.transform.position);
-                return distance > minRadius && distance < maxRadius;
-            })
-            .Where(drone => GetExpectedRemainingHealth(drone) > 0f)
-            .ToList();
+        // 优先级2：返回最近的敌机（后续 Ruofan 的 RedDroneTactics 会通过队友计数防扎堆）
+        var enemyDrones = GetAllEnemiesOfType<ArmyElement>(false)
+            .Where(d => d.Health > 0 && !d.CompareTag(gameObject.tag))
+            .OrderBy(d => Vector3.Distance(dronePos, d.transform.position))
+            .FirstOrDefault();
 
-        Drone bestDrone = null;
-        float bestScore = float.MinValue;
-        var myDrones = GetAllAlliesOfType<Drone>(false);
-        var allEnemies = GetAllEnemiesOfType<Drone>(false); 
-
-        foreach (var enemy in enemyDrones)
-        {
-            float score = 0f;
-
-            // 1. 距离收益：越近越好
-            float distance = Vector3.Distance(dronePos, enemy.transform.position);
-            score += (100f - distance);
-
-            // 2. 队友拥挤度惩罚（防止红方扎堆）
-            int attackers = myDrones.Count(myDrone => Vector3.Distance(myDrone.transform.position, enemy.transform.position) < 15f);
-            score -= (attackers * 40f);
-
-            // 3. 敌人阵型惩罚（避免冲进绿方大部队）
-            int enemyNeighbors = allEnemies.Count(other => 
-                other != enemy && Vector3.Distance(other.transform.position, enemy.transform.position) < 10f);
-            score -= (enemyNeighbors * 30f);
-
-            // 4. 血量收益：优先打残血的
-            score += (50f - enemy.Health) * 0.5f;
-
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestDrone = enemy;
-            }
-        }
-
-        if (bestDrone != null) return bestDrone.gameObject;
+        if (enemyDrones != null) return enemyDrones.gameObject;
 
         return null;
     }
 
     // =========================================================
-    // MEDIC TARGET SELECTION (RED)
+    // MEDIC TARGET SELECTION
     // =========================================================
-
     GameObject GetBestHealTarget(Vector3 medicPos, float minRadius, float maxRadius)
     {
         IArmyElement best = null;
@@ -314,17 +207,19 @@ public class ArmyManagerRed : ArmyManager
         foreach (IArmyElement ally in m_ArmyElements)
         {
             if (ally == null) continue;
-            // 只治疗受伤的活着的单位
-            if (ally.Health <= 0f || ally.Health >= 50f) continue; 
+            if (ally.Health <= 0f) continue; 
             
             Component allyComponent = ally as Component;
             if (allyComponent == null) continue;
             if (allyComponent.gameObject == gameObject) continue;
 
+            // 获取最大血量（假设都是50），如果低于最大血量，才需要治疗
+            Health healthComp = allyComponent.GetComponent<Health>();
+            if (healthComp != null && ally.Health >= healthComp.MaxValue) continue;
+
             float distance = Vector3.Distance(medicPos, allyComponent.transform.position);
             if (distance <= minRadius || distance >= maxRadius) continue;
 
-            // 寻找血量最低的
             if (ally.Health < bestHealth)
             {
                 bestHealth = ally.Health;
@@ -341,7 +236,6 @@ public class ArmyManagerRed : ArmyManager
     // =========================================================
     // HELPER: GET ALLIES
     // =========================================================
-
     public List<T> GetAllAlliesOfType<T>(bool includeDead = false) where T : Component
     {
         List<T> allies = new List<T>();
@@ -349,11 +243,7 @@ public class ArmyManagerRed : ArmyManager
         {
             if (element == null) continue;
             if (!includeDead && element.Health <= 0f) continue;
-
-            if (element is T comp)
-            {
-                allies.Add(comp);
-            }
+            if (element is T comp) allies.Add(comp);
         }
         return allies;
     }
@@ -361,7 +251,6 @@ public class ArmyManagerRed : ArmyManager
     // =========================================================
     // BATTLE END
     // =========================================================
-
     public override void ArmyElementHasBeenKilled(GameObject go)
     {
         base.ArmyElementHasBeenKilled(go);
@@ -375,10 +264,7 @@ public class ArmyManagerRed : ArmyManager
 
     public void GreenArmyIsDead(string deadArmyTag)
     {
-        int nDrones = 0;
-        int nTurrets = 0;
-        int health = 0;
-
+        int nDrones = 0, nTurrets = 0, health = 0;
         ComputeStatistics(ref nDrones, ref nTurrets, ref health);
 
         GUIUtility.systemCopyBuffer = "1\t" + ((int)Timer.Value).ToString() + "\t" +
