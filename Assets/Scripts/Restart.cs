@@ -7,6 +7,7 @@ public class Restart : MonoBehaviour
 {
 	public void RestartSameLevel()
 	{
+		RedDroneTactics.ResetBattleState();
 		SceneManager.LoadScene(SceneManager.GetActiveScene().name);
 	}
 }

@@ -75,30 +75,9 @@ public class Drone : ArmyElement, IShoot
         }
     }
 
-    // 【新增】给无人机加血的方法
     public void Heal(float amount)
     {
-        // 由于不知道 ArmyElement 内部怎么存血量的，这里提供一个安全的通用加血逻辑
-        // 假设父类 ArmyElement 里有 m_Health 或者类似的字段
-        // 如果没有，我们可以通过一些通用的手段去增加
-        
-        // 如果父类有提供受伤害的方法，通常也会有一个类似加血的方法
-        // 这里我们先尝试用反射强行修改基类的 Health 字段（因为你的接口里是 get;）
-        var healthProperty = typeof(ArmyElement).GetProperty("Health");
-        if (healthProperty != null && healthProperty.CanWrite)
-        {
-            healthProperty.SetValue(this, Mathf.Min(50f, Health + amount)); // 假设满血是 50
-        }
-        else
-        {
-            // 如果属性是只读的，尝试找底层字段
-            var healthField = typeof(ArmyElement).GetField("m_Health", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (healthField != null)
-            {
-                float currentHealth = (float)healthField.GetValue(this);
-                healthField.SetValue(this, Mathf.Min(50f, currentHealth + amount)); // 50 是无人机的满血上限
-            }
-        }
+        UnitHealth.Heal(amount);
     }
 
     public new void Die()

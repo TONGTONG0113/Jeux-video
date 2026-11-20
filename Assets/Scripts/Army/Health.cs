@@ -12,10 +12,12 @@ public class Health : MonoBehaviour
     
     // 提供接口给 ArmyManager 统计和医疗兵
     public float Value => m_Health;
-    public float MaxValue => m_StartHealth; 
+    public float MaxValue => m_StartHealth;
+    public bool CanHeal => m_Health > 0f && m_Health < MaxValue;
 
     [SerializeField] Slider m_HealthBar;
-    [SerializeField] UnityEvent m_OnDieEvent;
+    [SerializeField] UnityEvent m_OnDieEvent = new UnityEvent();
+    public UnityEvent DeathEvent => m_OnDieEvent;
 
     private void Start()
     {
@@ -40,8 +42,9 @@ public class Health : MonoBehaviour
     // 【新增】给医疗兵用
     public void Heal(float amount)
     {
-        if (m_Health <= 0) return; 
-        m_Health = Mathf.Min(m_Health + amount, m_StartHealth);
+        if (!CanHeal || !(amount > 0f)) return;
+
+        m_Health = Mathf.Min(m_Health + amount, MaxValue);
         RefreshHealthDisplay();
     }
 }

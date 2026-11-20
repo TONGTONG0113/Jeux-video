@@ -6,6 +6,7 @@ using UnityEngine;
 public class BattleStatsManager : MonoBehaviour
 {
     public static BattleStatsManager Instance { get; private set; }
+    public bool IsBattleEnded => m_BattleEnded;
 
 
     // =========================================================

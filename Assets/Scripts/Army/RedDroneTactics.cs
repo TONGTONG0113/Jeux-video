@@ -16,6 +16,29 @@ using UnityEngine.AI;
 /// </summary>
 public static class RedDroneTactics
 {
+    public static void ResetBattleState()
+    {
+        s_UnitsFrame = -1;
+        s_AllUnits.Clear();
+        s_DroneTargets.Clear();
+        s_PendingMissiles.Clear();
+        s_DeadKeys.Clear();
+
+        s_Raiders.Clear();
+        s_RaidersAssignedAt = -1f;
+        s_RaidersRequested = -1;
+        s_TurretDifficultyCache.Clear();
+
+        System.Array.Clear(s_Hits, 0, s_Hits.Length);
+        s_ThreatFrame = -1;
+        s_ThreatTag = null;
+        s_Threats.Clear();
+        s_RocketSamples.Clear();
+        s_ToRemove.Clear();
+        s_Reservations.Clear();
+        s_ReservationTimes.Clear();
+    }
+
     // =========================================================
     // ANNEXE A (lecture seule)
     // =========================================================

@@ -2406,6 +2406,71 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 660481075}
   m_CullTransparentMesh: 1
+--- !u!1001 &672872629
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 13.69
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.86760485
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.10198575
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.68005884
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0.73315763
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: -94.304
+      objectReference: {fileID: 0}
+    - target: {fileID: 2629684712366021199, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6556606423792882956, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_Name
+      value: MedicRed
+      objectReference: {fileID: 0}
+    - target: {fileID: 8615227525506855029, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8615227525506855029, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 8e8745491bbf3df40a185d350bdca30c, type: 3}
 --- !u!1001 &679579416
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8646,9 +8711,6 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
-  m_SlowDroneSpeedThreshold: 1
-  m_DroneClusterRadius: 5
-  m_MinDroneClusterSize: 2
   m_DroneFinishOffHealthRatio: 0.5
   m_DroneFinishOffAbsHealth: 5
 --- !u!1 &1971945183
@@ -10214,3 +10276,4 @@ SceneRoots:
   - {fileID: 3957337472050515063}
   - {fileID: 1221568044}
   - {fileID: 89783708}
+  - {fileID: 672872629}
