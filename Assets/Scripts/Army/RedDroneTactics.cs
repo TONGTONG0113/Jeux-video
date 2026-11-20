@@ -6,16 +6,13 @@ using UnityEngine.AI;
 /// Outils tactiques partagés par les tâches Behavior Designer des drones ROUGES.
 /// (Ruofan - DroneRedBehavior)
 ///
-///  - Tir anticipé (lead) : prédiction du point d'interception d'un missile
-///    à partir de la vitesse de la cible et du profil de vitesse du missile.
-///  - Ligne de tir : vérification qu'aucun obstacle ne bloque le missile.
-///  - Menaces d'artillerie : prédiction du point d'impact des grenades ennemies
-///    en vol (le chef d'état-major "voit" les trajectoires, cf. sujet).
-///  - Positions de tir : choix d'une position autour de la cible qui garde
-///    l'espacement entre drones rouges (anti dégâts de zone).
+/// - Tir anticipé (lead)
+/// - Ligne de tir
+/// - Menaces d'artillerie
+/// - Positions de tir espacées
+/// - Analyse d'accessibilité NavMesh des tourelles
 ///
-/// Aucune caractéristique de l'Annexe A n'est modifiée : les constantes
-/// ci-dessous sont uniquement LUES pour faire les prédictions.
+/// Aucune caractéristique de l'Annexe A n'est modifiée.
 /// </summary>
 public static class RedDroneTactics
 {
@@ -23,117 +20,238 @@ public static class RedDroneTactics
     // ANNEXE A (lecture seule)
     // =========================================================
 
-    public const float MISSILE_ACCELERATION = 40f;   // m/s²
-    public const float MISSILE_MAX_SPEED = 20f;      // m/s
-    public const float MISSILE_LIFE_DURATION = 3f;   // s
-    public const float GRENADE_DAMAGE_RADIUS = 5f;   // m
-    public const float DRONE_COLLIDER_RADIUS = 0.4f; // m
+    public const float MISSILE_ACCELERATION = 40f;
+    public const float MISSILE_MAX_SPEED = 20f;
+    public const float MISSILE_LIFE_DURATION = 3f;
+    public const float GRENADE_DAMAGE_RADIUS = 5f;
+    public const float DRONE_COLLIDER_RADIUS = 0.4f;
 
-    // Hauteur du pivot d'un drone au-dessus du sol (NavMeshAgent.baseOffset).
     const float DRONE_PIVOT_HEIGHT = 1f;
 
-    // Le lead est plafonné : les drones verts changent souvent de direction.
+    // Limite actuelle du lead.
     const float MAX_LEAD_DISTANCE = 6f;
+
 
     // =========================================================
     // OUTILS GÉNÉRAUX
     // =========================================================
 
-    public static Vector3 Flat(Vector3 v)
+    public static Vector3 Flat(
+        Vector3 v)
     {
-        return new Vector3(v.x, 0f, v.z);
+        return
+            new Vector3(
+                v.x,
+                0f,
+                v.z
+            );
     }
 
-    public static float FlatDistance(Vector3 a, Vector3 b)
+
+    public static float FlatDistance(
+        Vector3 a,
+        Vector3 b)
     {
-        float dx = a.x - b.x;
-        float dz = a.z - b.z;
-        return Mathf.Sqrt(dx * dx + dz * dz);
+        float dx =
+            a.x - b.x;
+
+        float dz =
+            a.z - b.z;
+
+
+        return
+            Mathf.Sqrt(
+                dx * dx +
+                dz * dz
+            );
     }
 
-    public static bool IsAlive(Transform t)
+
+    public static bool IsAlive(
+        Transform t)
     {
-        if (t == null) return false;
-        IArmyElement element = t.GetComponent<IArmyElement>();
-        return element != null && element.Health > 0f;
+        if (t == null)
+            return false;
+
+
+        IArmyElement element =
+            t.GetComponent<IArmyElement>();
+
+
+        return
+            element != null &&
+            element.Health > 0f;
     }
 
-    /// <summary>Centre du collider de la cible (meilleur point de visée que le pivot).</summary>
-    public static Vector3 GetAimCenter(Transform target)
+
+    /// <summary>
+    /// Centre du collider de la cible.
+    /// </summary>
+    public static Vector3 GetAimCenter(
+        Transform target)
     {
-        Collider col = target.GetComponent<Collider>();
-        if (col == null) col = target.GetComponentInChildren<Collider>();
-        return col != null ? col.bounds.center : target.position;
+        Collider col =
+            target.GetComponent<Collider>();
+
+
+        if (col == null)
+        {
+            col =
+                target.GetComponentInChildren<Collider>();
+        }
+
+
+        return
+            col != null
+                ? col.bounds.center
+                : target.position;
     }
+
 
     // =========================================================
-    // CACHE DES UNITÉS (recalculé une fois par frame)
+    // CACHE DES UNITÉS
     // =========================================================
 
     static int s_UnitsFrame = -1;
-    static readonly List<ArmyElement> s_AllUnits = new List<ArmyElement>();
+
+    static readonly List<ArmyElement>
+        s_AllUnits =
+            new List<ArmyElement>();
+
 
     static List<ArmyElement> AllUnits()
     {
         if (s_UnitsFrame != Time.frameCount)
         {
-            s_UnitsFrame = Time.frameCount;
+            s_UnitsFrame =
+                Time.frameCount;
+
+
             s_AllUnits.Clear();
-            ArmyElement[] units = Object.FindObjectsByType<ArmyElement>(FindObjectsSortMode.None);
-            foreach (ArmyElement u in units)
+
+
+            ArmyElement[] units =
+                Object.FindObjectsByType<ArmyElement>(
+                    FindObjectsSortMode.None
+                );
+
+
+            foreach (ArmyElement unit in units)
             {
-                if (u != null && u.Health > 0f) s_AllUnits.Add(u);
+                if (
+                    unit != null &&
+                    unit.Health > 0f
+                )
+                {
+                    s_AllUnits.Add(
+                        unit
+                    );
+                }
             }
         }
-        return s_AllUnits;
+
+
+        return
+            s_AllUnits;
     }
 
-    /// <summary>Vrai si la position est proche d'une tourelle de notre camp.</summary>
-    public static bool IsNearAllyTurret(Vector3 pos, string myTag, float radius)
+
+    public static bool IsNearAllyTurret(
+        Vector3 pos,
+        string myTag,
+        float radius)
     {
-        foreach (ArmyElement u in AllUnits())
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (u is Turret && u.CompareTag(myTag) && FlatDistance(pos, u.transform.position) <= radius)
+            if (
+                unit is Turret &&
+                unit.CompareTag(myTag) &&
+                FlatDistance(
+                    pos,
+                    unit.transform.position
+                ) <= radius
+            )
+            {
                 return true;
+            }
         }
+
+
         return false;
     }
 
-    /// <summary>Nombre de drones ennemis encore en vie.</summary>
-    public static int CountEnemyDrones(string myTag)
+
+    public static int CountEnemyDrones(
+        string myTag)
     {
         int count = 0;
-        foreach (ArmyElement u in AllUnits())
+
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (u is Drone && !u.CompareTag(myTag)) count++;
+            if (
+                unit is Drone &&
+                !unit.CompareTag(myTag)
+            )
+            {
+                count++;
+            }
         }
+
+
         return count;
     }
 
-    /// <summary>Ennemi vivant le plus proche, sans limite de distance (secours).</summary>
-    public static GameObject FindNearestEnemy(Vector3 pos, string myTag)
+
+    public static GameObject FindNearestEnemy(
+        Vector3 pos,
+        string myTag)
     {
         ArmyElement best = null;
-        float bestDist = float.MaxValue;
 
-        foreach (ArmyElement u in AllUnits())
+        float bestDist =
+            float.MaxValue;
+
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (u.CompareTag(myTag)) continue;
-            float d = FlatDistance(pos, u.transform.position);
-            if (d < bestDist)
+            if (unit.CompareTag(myTag))
+                continue;
+
+
+            float distance =
+                FlatDistance(
+                    pos,
+                    unit.transform.position
+                );
+
+
+            if (distance < bestDist)
             {
-                bestDist = d;
-                best = u;
+                bestDist =
+                    distance;
+
+                best =
+                    unit;
             }
         }
-        return best != null ? best.gameObject : null;
+
+
+        return
+            best != null
+                ? best.gameObject
+                : null;
     }
 
+
     // =========================================================
-    // TIR CONCENTRÉ (FOCUS FIRE)
-    // Constat en simulation : les dégâts rouges étaient répartis sur trop de
-    // cibles (490 dégâts de missiles pour seulement 3 drones verts détruits).
-    // On concentre donc les drones rouges sur les mêmes cibles, sans overkill.
+    // TIR CONCENTRÉ / ANTI-OVERKILL
     // =========================================================
 
     class PendingMissile
@@ -143,307 +261,1479 @@ public static class RedDroneTactics
         public float ExpireTime;
     }
 
-    static readonly Dictionary<GameObject, Transform> s_DroneTargets = new Dictionary<GameObject, Transform>();
-    static readonly List<PendingMissile> s_PendingMissiles = new List<PendingMissile>();
-    static readonly List<GameObject> s_DeadKeys = new List<GameObject>();
 
-    public static void SetDroneTarget(GameObject drone, Transform target)
+    static readonly Dictionary<GameObject, Transform>
+        s_DroneTargets =
+            new Dictionary<GameObject, Transform>();
+
+
+    static readonly List<PendingMissile>
+        s_PendingMissiles =
+            new List<PendingMissile>();
+
+
+    static readonly List<GameObject>
+        s_DeadKeys =
+            new List<GameObject>();
+
+
+    public static void SetDroneTarget(
+        GameObject drone,
+        Transform target)
     {
-        if (drone == null) return;
-        if (target == null) s_DroneTargets.Remove(drone);
-        else s_DroneTargets[drone] = target;
+        if (drone == null)
+            return;
+
+
+        if (target == null)
+        {
+            s_DroneTargets.Remove(
+                drone
+            );
+        }
+        else
+        {
+            s_DroneTargets[drone] =
+                target;
+        }
     }
 
-    /// <summary>Nombre d'autres drones rouges qui attaquent déjà cette cible.</summary>
-    public static int CountAttackers(Transform target, GameObject except)
+
+    public static int CountAttackers(
+        Transform target,
+        GameObject except)
     {
         int count = 0;
+
+
         s_DeadKeys.Clear();
-        foreach (KeyValuePair<GameObject, Transform> kv in s_DroneTargets)
+
+
+        foreach (
+            KeyValuePair<GameObject, Transform> kv
+            in s_DroneTargets)
         {
-            if (kv.Key == null) { s_DeadKeys.Add(kv.Key); continue; }
-            if (kv.Key == except) continue;
-            if (kv.Value == target) count++;
+            if (kv.Key == null)
+            {
+                s_DeadKeys.Add(
+                    kv.Key
+                );
+
+                continue;
+            }
+
+
+            if (kv.Key == except)
+                continue;
+
+
+            if (kv.Value == target)
+                count++;
         }
-        foreach (GameObject k in s_DeadKeys) s_DroneTargets.Remove(k);
+
+
+        foreach (
+            GameObject key
+            in s_DeadKeys)
+        {
+            s_DroneTargets.Remove(
+                key
+            );
+        }
+
+
         return count;
     }
 
-    /// <summary>Durée de vie ≈ temps de vol d'un missile à 25 m (≈ 1,4 s) + marge.</summary>
-    public static void RegisterPendingDamage(Transform target, float damage, float lifetime)
+
+    public static void RegisterPendingDamage(
+        Transform target,
+        float damage,
+        float lifetime)
     {
-        if (target == null) return;
-        s_PendingMissiles.Add(new PendingMissile { Target = target, Damage = damage, ExpireTime = Time.time + lifetime });
+        if (target == null)
+            return;
+
+
+        s_PendingMissiles.Add(
+            new PendingMissile
+            {
+                Target = target,
+                Damage = damage,
+                ExpireTime =
+                    Time.time + lifetime
+            }
+        );
     }
 
-    public static float GetPendingDamage(Transform target)
+
+    public static float GetPendingDamage(
+        Transform target)
     {
-        s_PendingMissiles.RemoveAll(p => p.Target == null || Time.time >= p.ExpireTime);
+        s_PendingMissiles.RemoveAll(
+            pending =>
+                pending.Target == null ||
+                Time.time >=
+                pending.ExpireTime
+        );
+
+
         float sum = 0f;
-        foreach (PendingMissile p in s_PendingMissiles)
+
+
+        foreach (
+            PendingMissile pending
+            in s_PendingMissiles)
         {
-            if (p.Target == target) sum += p.Damage;
+            if (pending.Target == target)
+            {
+                sum +=
+                    pending.Damage;
+            }
         }
+
+
         return sum;
     }
 
-    public static float GetExpectedHealth(Transform target)
+
+    public static float GetExpectedHealth(
+        Transform target)
     {
-        IArmyElement element = target != null ? target.GetComponent<IArmyElement>() : null;
-        if (element == null) return 0f;
-        return element.Health - GetPendingDamage(target);
+        IArmyElement element =
+            target != null
+                ? target.GetComponent<IArmyElement>()
+                : null;
+
+
+        if (element == null)
+            return 0f;
+
+
+        return
+            element.Health -
+            GetPendingDamage(
+                target
+            );
     }
 
-    /// <summary>
-    /// Choix de cible "focus fire" pour un drone rouge :
-    ///  - drones verts d'abord (ce sont eux qui tuent nos drones),
-    ///  - bonus si d'autres drones rouges l'attaquent déjà (concentration),
-    ///  - bonus si la cible est déjà endommagée (on finit les blessés),
-    ///  - exclusion des cibles déjà condamnées par les missiles en vol (anti overkill),
-    ///  - sinon, tourelle verte la plus faible.
-    /// </summary>
-    public static Transform SelectFocusTarget(Transform self, string myTag, int maxAttackersBonus)
+
+    // =========================================================
+    // FOCUS FIRE
+    // =========================================================
+
+    public static Transform SelectFocusTarget(
+        Transform self,
+        string myTag,
+        int maxAttackersBonus)
     {
-        Vector3 myPos = self.position;
+        Vector3 myPos =
+            self.position;
+
+
         Transform bestDrone = null;
-        float bestScore = float.MinValue;
+
+        float bestScore =
+            float.MinValue;
+
+
         Transform bestTurret = null;
-        float bestTurretScore = float.MinValue;
 
-        foreach (ArmyElement u in AllUnits())
+        float bestTurretScore =
+            float.MinValue;
+
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (u.CompareTag(myTag)) continue;
-            Transform t = u.transform;
+            if (unit.CompareTag(myTag))
+                continue;
 
-            float expected = GetExpectedHealth(t);
-            if (expected <= 0f) continue;
 
-            float dist = FlatDistance(myPos, t.position);
+            Transform target =
+                unit.transform;
 
-            if (u is Drone)
+
+            float expected =
+                GetExpectedHealth(
+                    target
+                );
+
+
+            if (expected <= 0f)
+                continue;
+
+
+            float distance =
+                FlatDistance(
+                    myPos,
+                    target.position
+                );
+
+
+            if (unit is Drone)
             {
-                int attackers = System.Math.Min(CountAttackers(t, self.gameObject), maxAttackersBonus);
-                float score = -dist
-                              + 15f * attackers
-                              + 0.8f * (50f - expected);
+                int attackers =
+                    System.Math.Min(
+                        CountAttackers(
+                            target,
+                            self.gameObject
+                        ),
+                        maxAttackersBonus
+                    );
 
-                // Protéger notre artillerie (100 % de précision en simulation) :
-                // priorité aux drones verts qui attaquent nos tourelles.
-                if (IsNearAllyTurret(t.position, myTag, 12f)) score += 20f;
 
-                // Drone vert immobile (en train de viser / tirer) : cible facile.
-                if (GetTargetVelocity(t).sqrMagnitude < 1f) score += 8f;
-                if (score > bestScore) { bestScore = score; bestDrone = t; }
+                float score =
+                    -distance
+                    +
+                    15f * attackers
+                    +
+                    0.8f *
+                    (50f - expected);
+
+
+                // Protéger notre artillerie.
+                if (
+                    IsNearAllyTurret(
+                        target.position,
+                        myTag,
+                        12f
+                    )
+                )
+                {
+                    score += 20f;
+                }
+
+
+                // Une cible lente est plus facile à toucher.
+                if (
+                    GetTargetVelocity(
+                        target
+                    ).sqrMagnitude < 1f
+                )
+                {
+                    score += 8f;
+                }
+
+
+                if (score > bestScore)
+                {
+                    bestScore =
+                        score;
+
+                    bestDrone =
+                        target;
+                }
             }
-            else if (u is Turret)
+            else if (unit is Turret)
             {
-                float score = -dist - 0.5f * expected + 10f * System.Math.Min(CountAttackers(t, self.gameObject), maxAttackersBonus);
-                if (score > bestTurretScore) { bestTurretScore = score; bestTurret = t; }
+                float score =
+                    -distance
+                    -
+                    0.5f * expected
+                    +
+                    10f *
+                    System.Math.Min(
+                        CountAttackers(
+                            target,
+                            self.gameObject
+                        ),
+                        maxAttackersBonus
+                    );
+
+
+                if (score > bestTurretScore)
+                {
+                    bestTurretScore =
+                        score;
+
+                    bestTurret =
+                        target;
+                }
             }
         }
 
-        return bestDrone != null ? bestDrone : bestTurret;
+
+        return
+            bestDrone != null
+                ? bestDrone
+                : bestTurret;
     }
 
+
+    // =========================================================
+    // RAIDERS : SÉLECTION DES TOURELLES ACCESSIBLES
+    // =========================================================
+
     /// <summary>
-    /// Mode "assaut des tourelles" : chaque drone choisit une tourelle verte
-    /// (la plus faible / la plus proche), au maximum ~4 drones par tourelle
-    /// pour répartir l'assaut et éviter un regroupement autour d'une seule.
+    /// Un raider ne choisit désormais que les tourelles qu'il peut
+    /// réellement atteindre via un chemin NavMesh complet.
+    ///
+    /// Les tourelles faciles d'accès sont favorisées.
+    /// Les tourelles difficiles sont laissées à l'artillerie RED.
     /// </summary>
-    public static Transform SelectTurretRushTarget(Transform self, string myTag, int maxAttackersPerTurret)
+    public static Transform SelectTurretRushTarget(
+        Transform self,
+        string myTag,
+        int maxAttackersPerTurret)
     {
-        Vector3 myPos = self.position;
+        Vector3 myPos =
+            self.position;
+
+
         Transform best = null;
-        float bestScore = float.MinValue;
 
-        foreach (ArmyElement u in AllUnits())
+        float bestScore =
+            float.MinValue;
+
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (!(u is Turret) || u.CompareTag(myTag)) continue;
-            Transform t = u.transform;
+            if (
+                !(unit is Turret) ||
+                unit.CompareTag(myTag)
+            )
+            {
+                continue;
+            }
 
-            float expected = GetExpectedHealth(t);
-            if (expected <= 0f) continue;
 
-            int attackers = CountAttackers(t, self.gameObject);
-            float score = -FlatDistance(myPos, t.position)
-                          - 0.3f * expected
-                          + 12f * System.Math.Min(attackers, maxAttackersPerTurret - 1)
-                          - 40f * System.Math.Max(0, attackers - (maxAttackersPerTurret - 1));
+            Transform target =
+                unit.transform;
 
-            if (score > bestScore) { bestScore = score; best = t; }
+
+            float expected =
+                GetExpectedHealth(
+                    target
+                );
+
+
+            if (expected <= 0f)
+                continue;
+
+
+            // Vérifier que ce drone peut réellement atteindre
+            // une position de tir autour de la tourelle.
+            int reachableSlots =
+                CountReachableTurretAttackSlots(
+                    self,
+                    target
+                );
+
+
+            // Aucun emplacement accessible :
+            // ne surtout pas sélectionner cette tourelle.
+            if (reachableSlots <= 0)
+                continue;
+
+
+            float difficulty =
+                GetTurretAccessDifficultyForDrone(
+                    self,
+                    target
+                );
+
+
+            int attackers =
+                CountAttackers(
+                    target,
+                    self.gameObject
+                );
+
+
+            float score =
+                // Cible proche.
+                -FlatDistance(
+                    myPos,
+                    target.position
+                )
+
+                // Finir les tourelles déjà affaiblies.
+                -0.3f * expected
+
+                // Focus fire limité.
+                +
+                12f *
+                System.Math.Min(
+                    attackers,
+                    maxAttackersPerTurret - 1
+                )
+
+                // Éviter que trop de raiders attaquent
+                // exactement la même tourelle.
+                -
+                40f *
+                System.Math.Max(
+                    0,
+                    attackers -
+                    (maxAttackersPerTurret - 1)
+                )
+
+                // Plus il existe de positions accessibles,
+                // plus la cible est intéressante pour un drone.
+                +
+                4f * reachableSlots
+
+                // Forte pénalité pour une tourelle nécessitant
+                // un long détour ou située sur un terrain complexe.
+                -
+                60f * difficulty;
+
+
+            if (score > bestScore)
+            {
+                bestScore =
+                    score;
+
+                best =
+                    target;
+            }
         }
+
+
         return best;
     }
 
-    // ---------------------------------------------------------
-    // RÔLES : "raiders" (commando anti-tourelles)
-    // Au début de chaque bataille, les N drones rouges les plus proches des
-    // tourelles vertes sont désignés raiders. Les rôles ne sont pas réattribués
-    // quand un raider meurt (on ne vide pas le groupe principal).
-    // ---------------------------------------------------------
 
-    static readonly HashSet<GameObject> s_Raiders = new HashSet<GameObject>();
-    static float s_RaidersAssignedAt = -1f;
-    static int s_RaidersRequested = -1;
+    // =========================================================
+    // RÔLES : RAIDERS
+    // =========================================================
 
-    public static bool IsRaider(GameObject drone, string myTag, int raidersCount)
+    static readonly HashSet<GameObject>
+        s_Raiders =
+            new HashSet<GameObject>();
+
+
+    static float s_RaidersAssignedAt =
+        -1f;
+
+
+    static int s_RaidersRequested =
+        -1;
+
+
+    public static bool IsRaider(
+        GameObject drone,
+        string myTag,
+        int raidersCount)
     {
-        if (raidersCount <= 0) return false;
+        if (raidersCount <= 0)
+            return false;
 
-        // Nouvelle bataille (rechargement de scène) ou nombre modifié : réattribution
-        bool newBattle = s_RaidersAssignedAt < 0f || Time.timeSinceLevelLoad < s_RaidersAssignedAt;
-        if (newBattle || s_RaidersRequested != raidersCount)
+
+        bool newBattle =
+            s_RaidersAssignedAt < 0f
+            ||
+            Time.timeSinceLevelLoad <
+            s_RaidersAssignedAt;
+
+
+        if (
+            newBattle ||
+            s_RaidersRequested !=
+            raidersCount
+        )
         {
-            AssignRaiders(myTag, raidersCount);
+            AssignRaiders(
+                myTag,
+                raidersCount
+            );
         }
-        return s_Raiders.Contains(drone);
+
+
+        return
+            s_Raiders.Contains(
+                drone
+            );
     }
 
-    static void AssignRaiders(string myTag, int raidersCount)
+
+    static void AssignRaiders(
+        string myTag,
+        int raidersCount)
     {
         s_Raiders.Clear();
-        s_RaidersAssignedAt = Time.timeSinceLevelLoad;
-        s_RaidersRequested = raidersCount;
 
-        List<ArmyElement> myDrones = new List<ArmyElement>();
-        List<Vector3> enemyTurrets = new List<Vector3>();
-        foreach (ArmyElement u in AllUnits())
+
+        s_RaidersAssignedAt =
+            Time.timeSinceLevelLoad;
+
+
+        s_RaidersRequested =
+            raidersCount;
+
+
+        List<ArmyElement> myDrones =
+            new List<ArmyElement>();
+
+
+        List<Vector3> enemyTurrets =
+            new List<Vector3>();
+
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (u is Drone && u.CompareTag(myTag)) myDrones.Add(u);
-            else if (u is Turret && !u.CompareTag(myTag)) enemyTurrets.Add(u.transform.position);
+            if (
+                unit is Drone &&
+                unit.CompareTag(myTag)
+            )
+            {
+                myDrones.Add(
+                    unit
+                );
+            }
+            else if (
+                unit is Turret &&
+                !unit.CompareTag(myTag)
+            )
+            {
+                enemyTurrets.Add(
+                    unit.transform.position
+                );
+            }
         }
-        if (enemyTurrets.Count == 0) return;
 
-        myDrones.Sort((a, b) =>
-            DistanceToClosest(a.transform.position, enemyTurrets)
-                .CompareTo(DistanceToClosest(b.transform.position, enemyTurrets)));
 
-        for (int i = 0; i < myDrones.Count && i < raidersCount; i++)
-            s_Raiders.Add(myDrones[i].gameObject);
+        if (enemyTurrets.Count == 0)
+            return;
+
+
+        myDrones.Sort(
+            (a, b) =>
+                DistanceToClosest(
+                    a.transform.position,
+                    enemyTurrets
+                )
+                .CompareTo(
+                    DistanceToClosest(
+                        b.transform.position,
+                        enemyTurrets
+                    )
+                )
+        );
+
+
+        for (
+            int i = 0;
+            i < myDrones.Count &&
+            i < raidersCount;
+            i++)
+        {
+            s_Raiders.Add(
+                myDrones[i].gameObject
+            );
+        }
     }
 
-    static float DistanceToClosest(Vector3 pos, List<Vector3> points)
+
+    static float DistanceToClosest(
+        Vector3 pos,
+        List<Vector3> points)
     {
-        float best = float.MaxValue;
-        foreach (Vector3 p in points) best = Mathf.Min(best, FlatDistance(pos, p));
+        float best =
+            float.MaxValue;
+
+
+        foreach (Vector3 point in points)
+        {
+            best =
+                Mathf.Min(
+                    best,
+                    FlatDistance(
+                        pos,
+                        point
+                    )
+                );
+        }
+
+
         return best;
     }
 
-    public static int CountEnemyTurrets(string myTag)
+
+    public static int CountEnemyTurrets(
+        string myTag)
     {
         int count = 0;
-        foreach (ArmyElement u in AllUnits())
+
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (u is Turret && !u.CompareTag(myTag)) count++;
+            if (
+                unit is Turret &&
+                !unit.CompareTag(myTag)
+            )
+            {
+                count++;
+            }
         }
+
+
         return count;
     }
 
+
     // =========================================================
-    // TIR ANTICIPÉ (LEAD)
+    // ACCESSIBILITÉ DES TOURELLES
     // =========================================================
 
-    /// <summary>Distance parcourue par un missile après t secondes.</summary>
-    public static float MissileDistanceAt(float t, float startSpeed)
-    {
-        float tAcc = Mathf.Max(0f, (MISSILE_MAX_SPEED - startSpeed) / MISSILE_ACCELERATION);
-        if (t <= tAcc) return startSpeed * t + 0.5f * MISSILE_ACCELERATION * t * t;
+    // Distance à laquelle un RED drone tente normalement
+    // d'attaquer une tourelle.
+    const float TURRET_ATTACK_RADIUS = 4f;
 
-        float dAcc = startSpeed * tAcc + 0.5f * MISSILE_ACCELERATION * tAcc * tAcc;
-        return dAcc + MISSILE_MAX_SPEED * (t - tAcc);
+    // Rayon utilisé pour projeter les positions candidates
+    // sur le NavMesh.
+    const float TURRET_NAVMESH_SAMPLE_RADIUS = 1.5f;
+
+    // Nombre de positions testées autour de chaque tourelle.
+    const int TURRET_ACCESS_SAMPLES = 8;
+
+    // Pour déterminer la difficulté globale d'une tourelle,
+    // on vérifie les trois drones RED actuellement les plus proches.
+    const int TURRET_ACCESS_DRONES_TO_CHECK = 3;
+
+    // Le terrain ne change pas, mais la position des drones change.
+    // Recalcul une fois par seconde maximum pour éviter des dizaines
+    // de calculs NavMesh par frame.
+    const float TURRET_DIFFICULTY_CACHE_DURATION = 1f;
+
+
+    class TurretDifficultyCacheEntry
+    {
+        public float Difficulty;
+        public float ExpireTime;
     }
 
-    /// <summary>Temps nécessaire à un missile pour parcourir la distance d.</summary>
-    public static float MissileTimeToDistance(float d, float startSpeed)
-    {
-        float tAcc = Mathf.Max(0f, (MISSILE_MAX_SPEED - startSpeed) / MISSILE_ACCELERATION);
-        float dAcc = startSpeed * tAcc + 0.5f * MISSILE_ACCELERATION * tAcc * tAcc;
 
-        if (d <= dAcc)
-        {
-            // 0.5·a·t² + v0·t - d = 0
-            float a = 0.5f * MISSILE_ACCELERATION;
-            float disc = startSpeed * startSpeed + 4f * a * d;
-            return (-startSpeed + Mathf.Sqrt(disc)) / (2f * a);
-        }
-        return tAcc + (d - dAcc) / MISSILE_MAX_SPEED;
-    }
+    static readonly Dictionary<Transform, TurretDifficultyCacheEntry>
+        s_TurretDifficultyCache =
+            new Dictionary<Transform, TurretDifficultyCacheEntry>();
 
-    public static Vector3 GetTargetVelocity(Transform target)
-    {
-        NavMeshAgent agent = target.GetComponent<NavMeshAgent>();
-        if (agent != null && agent.enabled) return agent.velocity;
-        return Vector3.zero; // tourelle : statique
-    }
 
     /// <summary>
-    /// Point de visée anticipé : position de la cible au moment où le missile l'atteint.
-    /// Résolution itérative (4 itérations suffisent largement).
+    /// Longueur réelle d'un chemin NavMesh.
     /// </summary>
-    public static Vector3 PredictAimPoint(Vector3 shooterPos, float missileStartSpeed, Transform target)
+    static float GetPathLength(
+        NavMeshPath path)
     {
-        Vector3 targetPos = GetAimCenter(target);
-        Vector3 velocity = Flat(GetTargetVelocity(target));
-        if (velocity.sqrMagnitude < 0.04f) return targetPos;
+        if (
+            path == null ||
+            path.corners == null ||
+            path.corners.Length < 2
+        )
+        {
+            return 0f;
+        }
 
-        Vector3 aim = targetPos;
+
+        float length = 0f;
+
+
+        for (
+            int i = 1;
+            i < path.corners.Length;
+            i++)
+        {
+            length +=
+                Vector3.Distance(
+                    path.corners[i - 1],
+                    path.corners[i]
+                );
+        }
+
+
+        return length;
+    }
+
+
+    /// <summary>
+    /// Analyse l'accessibilité d'une tourelle depuis un drone donné.
+    ///
+    /// reachableSlots :
+    /// nombre de positions d'attaque accessibles autour de la tourelle.
+    ///
+    /// bestDetourRatio :
+    /// longueur réelle du meilleur chemin / distance directe.
+    ///
+    /// 1.0 = chemin presque direct.
+    /// > 1.0 = détour imposé par le terrain.
+    /// </summary>
+    static void AnalyseTurretAccess(
+        Transform drone,
+        Transform turret,
+        out int reachableSlots,
+        out float bestDetourRatio)
+    {
+        reachableSlots = 0;
+
+        bestDetourRatio =
+            float.PositiveInfinity;
+
+
+        if (
+            drone == null ||
+            turret == null
+        )
+        {
+            return;
+        }
+
+
+        NavMeshHit sourceHit;
+
+
+        // Le pivot du drone peut être légèrement au-dessus
+        // du NavMesh à cause du baseOffset.
+        if (
+            !NavMesh.SamplePosition(
+                drone.position,
+                out sourceHit,
+                2f,
+                NavMesh.AllAreas
+            )
+        )
+        {
+            return;
+        }
+
+
+        Vector3 sourcePos =
+            sourceHit.position;
+
+
+        Vector3 baseDir =
+            Flat(
+                drone.position -
+                turret.position
+            );
+
+
+        if (baseDir.sqrMagnitude < 0.01f)
+        {
+            baseDir =
+                Vector3.forward;
+        }
+        else
+        {
+            baseDir.Normalize();
+        }
+
+
+        for (
+            int i = 0;
+            i < TURRET_ACCESS_SAMPLES;
+            i++)
+        {
+            float angle =
+                i *
+                (
+                    360f /
+                    TURRET_ACCESS_SAMPLES
+                );
+
+
+            Vector3 direction =
+                Quaternion.Euler(
+                    0f,
+                    angle,
+                    0f
+                ) *
+                baseDir;
+
+
+            Vector3 candidate =
+                turret.position
+                +
+                direction *
+                TURRET_ATTACK_RADIUS;
+
+
+            NavMeshHit targetHit;
+
+
+            if (
+                !NavMesh.SamplePosition(
+                    candidate,
+                    out targetHit,
+                    TURRET_NAVMESH_SAMPLE_RADIUS,
+                    NavMesh.AllAreas
+                )
+            )
+            {
+                continue;
+            }
+
+
+            NavMeshPath path =
+                new NavMeshPath();
+
+
+            bool pathFound =
+                NavMesh.CalculatePath(
+                    sourcePos,
+                    targetHit.position,
+                    NavMesh.AllAreas,
+                    path
+                );
+
+
+            if (
+                !pathFound ||
+                path.status !=
+                NavMeshPathStatus.PathComplete
+            )
+            {
+                continue;
+            }
+
+
+            reachableSlots++;
+
+
+            float pathLength =
+                GetPathLength(
+                    path
+                );
+
+
+            float directDistance =
+                Mathf.Max(
+                    1f,
+                    FlatDistance(
+                        sourcePos,
+                        targetHit.position
+                    )
+                );
+
+
+            float detourRatio =
+                pathLength /
+                directDistance;
+
+
+            bestDetourRatio =
+                Mathf.Min(
+                    bestDetourRatio,
+                    detourRatio
+                );
+        }
+    }
+
+
+    /// <summary>
+    /// Nombre de positions d'attaque réellement accessibles
+    /// pour un drone précis.
+    ///
+    /// 0 = inaccessible.
+    /// 8 = très facilement accessible.
+    /// </summary>
+    public static int CountReachableTurretAttackSlots(
+        Transform drone,
+        Transform turret)
+    {
+        int reachableSlots;
+
+        float bestDetourRatio;
+
+
+        AnalyseTurretAccess(
+            drone,
+            turret,
+            out reachableSlots,
+            out bestDetourRatio
+        );
+
+
+        return reachableSlots;
+    }
+
+
+    /// <summary>
+    /// Difficulté d'accès d'une tourelle pour un drone donné.
+    ///
+    /// 0 = très facile.
+    /// 1 = très difficile / inaccessible.
+    ///
+    /// Le score prend en compte :
+    /// - le nombre de positions d'attaque accessibles ;
+    /// - le détour imposé par le NavMesh ;
+    /// - la différence de hauteur.
+    /// </summary>
+    public static float GetTurretAccessDifficultyForDrone(
+        Transform drone,
+        Transform turret)
+    {
+        if (
+            drone == null ||
+            turret == null
+        )
+        {
+            return 1f;
+        }
+
+
+        int reachableSlots;
+
+        float bestDetourRatio;
+
+
+        AnalyseTurretAccess(
+            drone,
+            turret,
+            out reachableSlots,
+            out bestDetourRatio
+        );
+
+
+        if (reachableSlots <= 0)
+        {
+            return 1f;
+        }
+
+
+        // 0 si les 8 positions sont accessibles.
+        // 1 si aucune ne l'est.
+        float accessPenalty =
+            1f -
+            (
+                reachableSlots /
+                (float)TURRET_ACCESS_SAMPLES
+            );
+
+
+        // Un chemin direct produit environ 1.
+        // Les grands détours dus aux terrasses,
+        // falaises ou bords de carte augmentent ce score.
+        float detourPenalty =
+            float.IsInfinity(
+                bestDetourRatio
+            )
+            ?
+            1f
+            :
+            Mathf.Clamp01(
+                (
+                    bestDetourRatio -
+                    1f
+                )
+                /
+                1.5f
+            );
+
+
+        // La hauteur n'est qu'un indicateur secondaire :
+        // elle ne suffit pas à elle seule à déclarer
+        // une tourelle difficile.
+        float heightPenalty =
+            Mathf.Clamp01(
+                Mathf.Abs(
+                    drone.position.y -
+                    turret.position.y
+                )
+                /
+                8f
+            );
+
+
+        return
+            0.65f * accessPenalty
+            +
+            0.25f * detourPenalty
+            +
+            0.10f * heightPenalty;
+    }
+
+
+    /// <summary>
+    /// Difficulté globale d'une tourelle pour l'armée RED.
+    ///
+    /// On teste les trois drones RED les plus proches.
+    /// Si même le meilleur d'entre eux a du mal à atteindre
+    /// la tourelle, celle-ci devient une cible prioritaire
+    /// pour l'artillerie.
+    /// </summary>
+    public static float GetTurretAccessDifficulty(
+        Transform turret,
+        string myTag)
+    {
+        if (turret == null)
+            return 1f;
+
+
+        TurretDifficultyCacheEntry cached;
+
+
+        if (
+            s_TurretDifficultyCache.TryGetValue(
+                turret,
+                out cached
+            )
+            &&
+            Time.time <
+            cached.ExpireTime
+        )
+        {
+            return
+                cached.Difficulty;
+        }
+
+
+        List<Drone> alliedDrones =
+            new List<Drone>();
+
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
+        {
+            Drone drone =
+                unit as Drone;
+
+
+            if (drone == null)
+                continue;
+
+
+            if (!drone.CompareTag(myTag))
+                continue;
+
+
+            if (drone.Health <= 0f)
+                continue;
+
+
+            alliedDrones.Add(
+                drone
+            );
+        }
+
+
+        // Plus aucun drone RED :
+        // l'artillerie traite normalement les tourelles restantes.
+        if (alliedDrones.Count == 0)
+        {
+            return 1f;
+        }
+
+
+        alliedDrones.Sort(
+            (a, b) =>
+                FlatDistance(
+                    a.transform.position,
+                    turret.position
+                )
+                .CompareTo(
+                    FlatDistance(
+                        b.transform.position,
+                        turret.position
+                    )
+                )
+        );
+
+
+        int dronesToCheck =
+            Mathf.Min(
+                TURRET_ACCESS_DRONES_TO_CHECK,
+                alliedDrones.Count
+            );
+
+
+        // On cherche le drone pour lequel cette tourelle
+        // est la PLUS FACILE.
+        //
+        // Si même ce drone a du mal, alors la tourelle
+        // doit être fortement prioritaire pour l'artillerie.
+        float easiestDifficulty =
+            1f;
+
+
+        for (
+            int i = 0;
+            i < dronesToCheck;
+            i++)
+        {
+            float difficulty =
+                GetTurretAccessDifficultyForDrone(
+                    alliedDrones[i].transform,
+                    turret
+                );
+
+
+            easiestDifficulty =
+                Mathf.Min(
+                    easiestDifficulty,
+                    difficulty
+                );
+
+
+            if (easiestDifficulty <= 0.01f)
+            {
+                break;
+            }
+        }
+
+
+        s_TurretDifficultyCache[turret] =
+            new TurretDifficultyCacheEntry
+            {
+                Difficulty =
+                    easiestDifficulty,
+
+                ExpireTime =
+                    Time.time +
+                    TURRET_DIFFICULTY_CACHE_DURATION
+            };
+
+
+        return
+            easiestDifficulty;
+    }
+
+
+    // =========================================================
+    // TIR ANTICIPÉ
+    // =========================================================
+
+    public static float MissileDistanceAt(
+        float t,
+        float startSpeed)
+    {
+        float tAcc =
+            Mathf.Max(
+                0f,
+                (
+                    MISSILE_MAX_SPEED -
+                    startSpeed
+                )
+                /
+                MISSILE_ACCELERATION
+            );
+
+
+        if (t <= tAcc)
+        {
+            return
+                startSpeed * t
+                +
+                0.5f *
+                MISSILE_ACCELERATION *
+                t * t;
+        }
+
+
+        float dAcc =
+            startSpeed * tAcc
+            +
+            0.5f *
+            MISSILE_ACCELERATION *
+            tAcc * tAcc;
+
+
+        return
+            dAcc
+            +
+            MISSILE_MAX_SPEED *
+            (t - tAcc);
+    }
+
+
+    public static float MissileTimeToDistance(
+        float distance,
+        float startSpeed)
+    {
+        float tAcc =
+            Mathf.Max(
+                0f,
+                (
+                    MISSILE_MAX_SPEED -
+                    startSpeed
+                )
+                /
+                MISSILE_ACCELERATION
+            );
+
+
+        float dAcc =
+            startSpeed * tAcc
+            +
+            0.5f *
+            MISSILE_ACCELERATION *
+            tAcc * tAcc;
+
+
+        if (distance <= dAcc)
+        {
+            float a =
+                0.5f *
+                MISSILE_ACCELERATION;
+
+
+            float disc =
+                startSpeed *
+                startSpeed
+                +
+                4f *
+                a *
+                distance;
+
+
+            return
+                (
+                    -startSpeed +
+                    Mathf.Sqrt(disc)
+                )
+                /
+                (2f * a);
+        }
+
+
+        return
+            tAcc
+            +
+            (
+                distance -
+                dAcc
+            )
+            /
+            MISSILE_MAX_SPEED;
+    }
+
+
+    public static Vector3 GetTargetVelocity(
+        Transform target)
+    {
+        NavMeshAgent agent =
+            target.GetComponent<NavMeshAgent>();
+
+
+        if (
+            agent != null &&
+            agent.enabled
+        )
+        {
+            return
+                agent.velocity;
+        }
+
+
+        return
+            Vector3.zero;
+    }
+
+
+    public static Vector3 PredictAimPoint(
+        Vector3 shooterPos,
+        float missileStartSpeed,
+        Transform target)
+    {
+        Vector3 targetPos =
+            GetAimCenter(
+                target
+            );
+
+
+        Vector3 velocity =
+            Flat(
+                GetTargetVelocity(
+                    target
+                )
+            );
+
+
+        if (velocity.sqrMagnitude < 0.04f)
+        {
+            return
+                targetPos;
+        }
+
+
+        Vector3 aim =
+            targetPos;
+
+
         for (int i = 0; i < 4; i++)
         {
-            float d = FlatDistance(shooterPos, aim);
-            float t = Mathf.Min(MissileTimeToDistance(d, missileStartSpeed), MISSILE_LIFE_DURATION);
-            aim = targetPos + Vector3.ClampMagnitude(velocity * t, MAX_LEAD_DISTANCE);
+            float distance =
+                FlatDistance(
+                    shooterPos,
+                    aim
+                );
+
+
+            float time =
+                Mathf.Min(
+                    MissileTimeToDistance(
+                        distance,
+                        missileStartSpeed
+                    ),
+                    MISSILE_LIFE_DURATION
+                );
+
+
+            aim =
+                targetPos
+                +
+                Vector3.ClampMagnitude(
+                    velocity * time,
+                    MAX_LEAD_DISTANCE
+                );
         }
+
+
         return aim;
     }
+
 
     // =========================================================
     // LIGNE DE TIR
     // =========================================================
 
-    static readonly RaycastHit[] s_Hits = new RaycastHit[32];
+    static readonly RaycastHit[]
+        s_Hits =
+            new RaycastHit[32];
 
-    class HitDistanceComparer : IComparer<RaycastHit>
+
+    class HitDistanceComparer :
+        IComparer<RaycastHit>
     {
-        public int Compare(RaycastHit a, RaycastHit b) { return a.distance.CompareTo(b.distance); }
-    }
-    static readonly HitDistanceComparer s_HitComparer = new HitDistanceComparer();
-
-    /// <summary>
-    /// Vrai si un missile tiré depuis "from" peut atteindre la cible :
-    /// les unités alliées sont traversées (les missiles ignorent leur propre camp),
-    /// toucher un autre ennemi est acceptable, un obstacle / le terrain bloque.
-    /// </summary>
-    public static bool HasLineOfFire(Vector3 from, Transform target, string myTag)
-    {
-        Vector3 to = GetAimCenter(target);
-        Vector3 dir = to - from;
-        float dist = dir.magnitude;
-        if (dist < 0.05f) return true;
-
-        int n = Physics.RaycastNonAlloc(from, dir / dist, s_Hits, dist, ~0, QueryTriggerInteraction.Ignore);
-        System.Array.Sort(s_Hits, 0, n, s_HitComparer);
-
-        for (int i = 0; i < n; i++)
+        public int Compare(
+            RaycastHit a,
+            RaycastHit b)
         {
-            Transform hitT = s_Hits[i].collider.transform;
-            if (hitT == target || hitT.IsChildOf(target)) return true;
+            return
+                a.distance
+                    .CompareTo(
+                        b.distance
+                    );
+        }
+    }
 
-            IArmyElement element = s_Hits[i].collider.GetComponentInParent<IArmyElement>();
-            if (element != null)
+
+    static readonly HitDistanceComparer
+        s_HitComparer =
+            new HitDistanceComparer();
+
+
+    public static bool HasLineOfFire(
+        Vector3 from,
+        Transform target,
+        string myTag)
+    {
+        Vector3 to =
+            GetAimCenter(
+                target
+            );
+
+
+        Vector3 dir =
+            to - from;
+
+
+        float distance =
+            dir.magnitude;
+
+
+        if (distance < 0.05f)
+            return true;
+
+
+        int hitCount =
+            Physics.RaycastNonAlloc(
+                from,
+                dir / distance,
+                s_Hits,
+                distance,
+                ~0,
+                QueryTriggerInteraction.Ignore
+            );
+
+
+        System.Array.Sort(
+            s_Hits,
+            0,
+            hitCount,
+            s_HitComparer
+        );
+
+
+        for (
+            int i = 0;
+            i < hitCount;
+            i++)
+        {
+            Transform hitTransform =
+                s_Hits[i]
+                    .collider
+                    .transform;
+
+
+            if (
+                hitTransform == target ||
+                hitTransform.IsChildOf(
+                    target
+                )
+            )
             {
-                Component c = element as Component;
-                if (c != null && c.CompareTag(myTag)) continue; // allié : le missile le traverse
-                return true;                                     // autre ennemi : il sera touché
+                return true;
             }
 
-            if (s_Hits[i].collider.CompareTag(myTag)) continue;  // missile allié, etc.
-            return false;                                        // obstacle ou terrain
+
+            IArmyElement element =
+                s_Hits[i]
+                    .collider
+                    .GetComponentInParent<IArmyElement>();
+
+
+            if (element != null)
+            {
+                Component component =
+                    element as Component;
+
+
+                if (
+                    component != null &&
+                    component.CompareTag(
+                        myTag
+                    )
+                )
+                {
+                    continue;
+                }
+
+
+                return true;
+            }
+
+
+            if (
+                s_Hits[i]
+                    .collider
+                    .CompareTag(
+                        myTag
+                    )
+            )
+            {
+                continue;
+            }
+
+
+            return false;
         }
+
+
         return true;
     }
 
+
     // =========================================================
-    // MENACES : GRENADES ENNEMIES EN VOL
+    // MENACES : GRENADES ENNEMIES
     // =========================================================
 
     public struct GrenadeThreat
@@ -452,6 +1742,7 @@ public static class RedDroneTactics
         public float TimeToImpact;
     }
 
+
     class RocketSample
     {
         public Vector3 Position;
@@ -459,395 +1750,1326 @@ public static class RedDroneTactics
         public int Frame;
     }
 
-    static int s_ThreatFrame = -1;
+
+    static int s_ThreatFrame =
+        -1;
+
+
     static string s_ThreatTag;
-    static readonly List<GrenadeThreat> s_Threats = new List<GrenadeThreat>();
-    static readonly Dictionary<Rocket, RocketSample> s_RocketSamples = new Dictionary<Rocket, RocketSample>();
-    static readonly List<Rocket> s_ToRemove = new List<Rocket>();
 
-    /// <summary>Liste des impacts prévus des grenades ennemies (mise à jour 1 fois par frame).</summary>
-    public static List<GrenadeThreat> GetEnemyGrenadeThreats(string myTag)
+
+    static readonly List<GrenadeThreat>
+        s_Threats =
+            new List<GrenadeThreat>();
+
+
+    static readonly Dictionary<Rocket, RocketSample>
+        s_RocketSamples =
+            new Dictionary<Rocket, RocketSample>();
+
+
+    static readonly List<Rocket>
+        s_ToRemove =
+            new List<Rocket>();
+
+
+    public static List<GrenadeThreat>
+        GetEnemyGrenadeThreats(
+            string myTag)
     {
-        if (s_ThreatFrame == Time.frameCount && s_ThreatTag == myTag) return s_Threats;
+        if (
+            s_ThreatFrame ==
+            Time.frameCount
+            &&
+            s_ThreatTag ==
+            myTag
+        )
+        {
+            return
+                s_Threats;
+        }
 
-        s_ThreatFrame = Time.frameCount;
-        s_ThreatTag = myTag;
+
+        s_ThreatFrame =
+            Time.frameCount;
+
+
+        s_ThreatTag =
+            myTag;
+
+
         s_Threats.Clear();
 
-        Rocket[] rockets = Object.FindObjectsByType<Rocket>(FindObjectsSortMode.None);
+
+        Rocket[] rockets =
+            Object.FindObjectsByType<Rocket>(
+                FindObjectsSortMode.None
+            );
+
+
         foreach (Rocket rocket in rockets)
         {
-            if (rocket == null || rocket.CompareTag(myTag)) continue;
-
-            Rocket id = rocket;
-            Vector3 pos = rocket.transform.position;
-            Vector3 velocity = Vector3.zero;
-            bool hasVelocity = false;
-
-            // 1) vitesse physique du Rigidbody
-            Rigidbody rb = rocket.GetComponent<Rigidbody>();
-            if (rb != null && !rb.isKinematic && rb.linearVelocity.sqrMagnitude > 1f)
+            if (
+                rocket == null ||
+                rocket.CompareTag(myTag)
+            )
             {
-                velocity = rb.linearVelocity;
-                hasVelocity = true;
+                continue;
             }
 
-            // 2) secours : différence finie entre deux observations
-            RocketSample sample;
-            if (s_RocketSamples.TryGetValue(id, out sample))
+
+            Rocket id =
+                rocket;
+
+
+            Vector3 pos =
+                rocket.transform.position;
+
+
+            Vector3 velocity =
+                Vector3.zero;
+
+
+            bool hasVelocity =
+                false;
+
+
+            Rigidbody rb =
+                rocket.GetComponent<Rigidbody>();
+
+
+            if (
+                rb != null &&
+                !rb.isKinematic &&
+                rb.linearVelocity.sqrMagnitude > 1f
+            )
             {
-                float dt = Time.time - sample.Time;
-                if (!hasVelocity && dt > 0.0001f)
+                velocity =
+                    rb.linearVelocity;
+
+                hasVelocity =
+                    true;
+            }
+
+
+            RocketSample sample;
+
+
+            if (
+                s_RocketSamples.TryGetValue(
+                    id,
+                    out sample
+                )
+            )
+            {
+                float dt =
+                    Time.time -
+                    sample.Time;
+
+
+                if (
+                    !hasVelocity &&
+                    dt > 0.0001f
+                )
                 {
-                    velocity = (pos - sample.Position) / dt;
-                    hasVelocity = velocity.sqrMagnitude > 1f;
+                    velocity =
+                        (
+                            pos -
+                            sample.Position
+                        )
+                        /
+                        dt;
+
+
+                    hasVelocity =
+                        velocity.sqrMagnitude > 1f;
                 }
             }
             else
             {
-                sample = new RocketSample();
-                s_RocketSamples[id] = sample;
-            }
-            sample.Position = pos;
-            sample.Time = Time.time;
-            sample.Frame = Time.frameCount;
+                sample =
+                    new RocketSample();
 
-            if (!hasVelocity) continue;
+
+                s_RocketSamples[id] =
+                    sample;
+            }
+
+
+            sample.Position =
+                pos;
+
+
+            sample.Time =
+                Time.time;
+
+
+            sample.Frame =
+                Time.frameCount;
+
+
+            if (!hasVelocity)
+                continue;
+
 
             Vector3 impact;
-            float t;
-            if (PredictGrenadeImpact(pos, velocity, out impact, out t))
+            float time;
+
+
+            if (
+                PredictGrenadeImpact(
+                    pos,
+                    velocity,
+                    out impact,
+                    out time
+                )
+            )
             {
-                s_Threats.Add(new GrenadeThreat { Impact = impact, TimeToImpact = t });
+                s_Threats.Add(
+                    new GrenadeThreat
+                    {
+                        Impact = impact,
+                        TimeToImpact = time
+                    }
+                );
             }
         }
 
-        // Nettoyage des grenades disparues
-        s_ToRemove.Clear();
-        foreach (KeyValuePair<Rocket, RocketSample> kv in s_RocketSamples)
-        {
-            if (kv.Key == null || Time.frameCount - kv.Value.Frame > 30) s_ToRemove.Add(kv.Key);
-        }
-        foreach (Rocket r in s_ToRemove) s_RocketSamples.Remove(r);
 
-        return s_Threats;
+        s_ToRemove.Clear();
+
+
+        foreach (
+            KeyValuePair<Rocket, RocketSample> kv
+            in s_RocketSamples)
+        {
+            if (
+                kv.Key == null ||
+                Time.frameCount -
+                kv.Value.Frame >
+                30
+            )
+            {
+                s_ToRemove.Add(
+                    kv.Key
+                );
+            }
+        }
+
+
+        foreach (
+            Rocket rocket
+            in s_ToRemove)
+        {
+            s_RocketSamples.Remove(
+                rocket
+            );
+        }
+
+
+        return
+            s_Threats;
     }
 
-    /// <summary>
-    /// Résout p.y + v.y·t + ½·g·t² = hauteur du sol (+ pivot drone) au point d'arrivée.
-    /// 3 itérations pour tenir compte des terrasses.
-    /// </summary>
-    public static bool PredictGrenadeImpact(Vector3 p, Vector3 v, out Vector3 impact, out float time)
+
+    public static bool PredictGrenadeImpact(
+        Vector3 pos,
+        Vector3 velocity,
+        out Vector3 impact,
+        out float time)
     {
-        impact = p;
-        time = 0f;
+        impact =
+            pos;
 
-        float g = Physics.gravity.y;
-        if (g > -0.01f) return false;
 
-        float groundY = GroundHeight(p, p.y - 10f);
+        time =
+            0f;
+
+
+        float gravity =
+            Physics.gravity.y;
+
+
+        if (gravity > -0.01f)
+            return false;
+
+
+        float groundY =
+            GroundHeight(
+                pos,
+                pos.y - 10f
+            );
+
 
         for (int i = 0; i < 3; i++)
         {
-            float yEnd = groundY + DRONE_PIVOT_HEIGHT;
-            float a = 0.5f * g;
-            float b = v.y;
-            float c = p.y - yEnd;
-            float disc = b * b - 4f * a * c;
-            if (disc < 0f) return false;
+            float yEnd =
+                groundY +
+                DRONE_PIVOT_HEIGHT;
 
-            float t = (-b - Mathf.Sqrt(disc)) / (2f * a); // racine positive (a < 0)
-            if (t < 0f) return false;
 
-            time = t;
-            impact = new Vector3(p.x + v.x * t, yEnd, p.z + v.z * t);
-            groundY = GroundHeight(impact, groundY);
+            float a =
+                0.5f *
+                gravity;
+
+
+            float b =
+                velocity.y;
+
+
+            float c =
+                pos.y -
+                yEnd;
+
+
+            float disc =
+                b * b
+                -
+                4f *
+                a *
+                c;
+
+
+            if (disc < 0f)
+                return false;
+
+
+            float t =
+                (
+                    -b -
+                    Mathf.Sqrt(disc)
+                )
+                /
+                (2f * a);
+
+
+            if (t < 0f)
+                return false;
+
+
+            time =
+                t;
+
+
+            impact =
+                new Vector3(
+                    pos.x +
+                    velocity.x * t,
+
+                    yEnd,
+
+                    pos.z +
+                    velocity.z * t
+                );
+
+
+            groundY =
+                GroundHeight(
+                    impact,
+                    groundY
+                );
         }
+
+
         return true;
     }
 
-    static float GroundHeight(Vector3 pos, float fallback)
+
+    static float GroundHeight(
+        Vector3 pos,
+        float fallback)
     {
-        if (TerrainManager.Instance == null) return fallback;
-        Vector3 terrainPos = Vector3.zero;
-        Vector3 normal = Vector3.zero;
-        if (TerrainManager.Instance.GetVerticallyAlignedPositionOnTerrain(pos, ref terrainPos, ref normal))
-            return terrainPos.y;
+        if (
+            TerrainManager.Instance ==
+            null
+        )
+        {
+            return fallback;
+        }
+
+
+        Vector3 terrainPos =
+            Vector3.zero;
+
+
+        Vector3 normal =
+            Vector3.zero;
+
+
+        if (
+            TerrainManager.Instance
+                .GetVerticallyAlignedPositionOnTerrain(
+                    pos,
+                    ref terrainPos,
+                    ref normal
+                )
+        )
+        {
+            return
+                terrainPos.y;
+        }
+
+
         return fallback;
     }
 
-    /// <summary>Vrai si "pos" est dans la zone d'explosion d'une grenade qui tombe dans moins de maxTime secondes.</summary>
-    public static bool IsInGrenadeDanger(Vector3 pos, string myTag, float dangerRadius, float maxTime)
+
+    public static bool IsInGrenadeDanger(
+        Vector3 pos,
+        string myTag,
+        float dangerRadius,
+        float maxTime)
     {
-        foreach (GrenadeThreat threat in GetEnemyGrenadeThreats(myTag))
+        foreach (
+            GrenadeThreat threat
+            in GetEnemyGrenadeThreats(
+                myTag
+            ))
         {
-            if (threat.TimeToImpact > maxTime) continue;
-            if (Mathf.Abs(threat.Impact.y - pos.y) > GRENADE_DAMAGE_RADIUS + 1f) continue;
-            if (FlatDistance(pos, threat.Impact) < dangerRadius) return true;
+            if (
+                threat.TimeToImpact >
+                maxTime
+            )
+            {
+                continue;
+            }
+
+
+            if (
+                Mathf.Abs(
+                    threat.Impact.y -
+                    pos.y
+                )
+                >
+                GRENADE_DAMAGE_RADIUS +
+                1f
+            )
+            {
+                continue;
+            }
+
+
+            if (
+                FlatDistance(
+                    pos,
+                    threat.Impact
+                )
+                <
+                dangerRadius
+            )
+            {
+                return true;
+            }
         }
+
+
         return false;
     }
 
+
     // =========================================================
-    // ESPACEMENT DES DRONES ROUGES (anti dégâts de zone)
+    // ESPACEMENT DES DRONES ROUGES
     // =========================================================
 
-    const float RESERVATION_LIFETIME = 6f;
+    const float RESERVATION_LIFETIME =
+        6f;
 
-    static readonly Dictionary<GameObject, Vector3> s_Reservations = new Dictionary<GameObject, Vector3>();
-    static readonly Dictionary<GameObject, float> s_ReservationTimes = new Dictionary<GameObject, float>();
 
-    public static void ReserveSlot(GameObject droneId, Vector3 slot)
+    static readonly Dictionary<GameObject, Vector3>
+        s_Reservations =
+            new Dictionary<GameObject, Vector3>();
+
+
+    static readonly Dictionary<GameObject, float>
+        s_ReservationTimes =
+            new Dictionary<GameObject, float>();
+
+
+    public static void ReserveSlot(
+        GameObject droneId,
+        Vector3 slot)
     {
-        s_Reservations[droneId] = slot;
-        s_ReservationTimes[droneId] = Time.time;
+        s_Reservations[droneId] =
+            slot;
+
+
+        s_ReservationTimes[droneId] =
+            Time.time;
     }
 
-    public static void ReleaseSlot(GameObject droneId)
+
+    public static void ReleaseSlot(
+        GameObject droneId)
     {
-        s_Reservations.Remove(droneId);
-        s_ReservationTimes.Remove(droneId);
+        s_Reservations.Remove(
+            droneId
+        );
+
+
+        s_ReservationTimes.Remove(
+            droneId
+        );
     }
 
-    /// <summary>
-    /// Pénalité de proximité avec les autres drones rouges
-    /// (positions actuelles ET destinations réservées).
-    /// </summary>
-    public static float AllyCrowdPenalty(Vector3 pos, GameObject myId, string myTag, float spacing)
+
+    public static float AllyCrowdPenalty(
+        Vector3 pos,
+        GameObject myId,
+        string myTag,
+        float spacing)
     {
-        float penalty = 0f;
+        float penalty =
+            0f;
 
-        foreach (ArmyElement u in AllUnits())
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (!(u is Drone) || !u.CompareTag(myTag)) continue;
-            if (u.gameObject == myId) continue;
+            if (
+                !(unit is Drone) ||
+                !unit.CompareTag(myTag)
+            )
+            {
+                continue;
+            }
 
-            float d = FlatDistance(pos, u.transform.position);
-            if (d < spacing) penalty += 1f - d / spacing;
+
+            if (unit.gameObject == myId)
+                continue;
+
+
+            float distance =
+                FlatDistance(
+                    pos,
+                    unit.transform.position
+                );
+
+
+            if (distance < spacing)
+            {
+                penalty +=
+                    1f -
+                    distance /
+                    spacing;
+            }
         }
 
-        foreach (KeyValuePair<GameObject, Vector3> kv in s_Reservations)
-        {
-            if (kv.Key == null || kv.Key == myId) continue;
-            float time;
-            if (!s_ReservationTimes.TryGetValue(kv.Key, out time) || Time.time - time > RESERVATION_LIFETIME) continue;
 
-            float d = FlatDistance(pos, kv.Value);
-            if (d < spacing) penalty += 1f - d / spacing;
+        foreach (
+            KeyValuePair<GameObject, Vector3> kv
+            in s_Reservations)
+        {
+            if (
+                kv.Key == null ||
+                kv.Key == myId
+            )
+            {
+                continue;
+            }
+
+
+            float reservationTime;
+
+
+            if (
+                !s_ReservationTimes.TryGetValue(
+                    kv.Key,
+                    out reservationTime
+                )
+                ||
+                Time.time -
+                reservationTime >
+                RESERVATION_LIFETIME
+            )
+            {
+                continue;
+            }
+
+
+            float distance =
+                FlatDistance(
+                    pos,
+                    kv.Value
+                );
+
+
+            if (distance < spacing)
+            {
+                penalty +=
+                    1f -
+                    distance /
+                    spacing;
+            }
         }
+
+
         return penalty;
     }
 
-    /// <summary>Nombre de drones ennemis proches d'une position (hors cible).</summary>
-    public static int EnemyDronesNear(Vector3 pos, string myTag, float radius, Transform ignore)
+
+    public static int EnemyDronesNear(
+        Vector3 pos,
+        string myTag,
+        float radius,
+        Transform ignore)
     {
         int count = 0;
-        foreach (ArmyElement u in AllUnits())
+
+
+        foreach (
+            ArmyElement unit
+            in AllUnits())
         {
-            if (!(u is Drone) || u.CompareTag(myTag) || u.transform == ignore) continue;
-            if (FlatDistance(pos, u.transform.position) < radius) count++;
+            if (
+                !(unit is Drone) ||
+                unit.CompareTag(myTag) ||
+                unit.transform == ignore
+            )
+            {
+                continue;
+            }
+
+
+            if (
+                FlatDistance(
+                    pos,
+                    unit.transform.position
+                )
+                <
+                radius
+            )
+            {
+                count++;
+            }
         }
+
+
         return count;
     }
+
 
     // =========================================================
     // CHOIX D'UNE POSITION DE TIR
     // =========================================================
 
-    static readonly float[] s_RadiusFactors = { 1f, 0.75f, 1.3f };
-    const int SLOT_ANGLES = 12;
-
-    /// <summary>
-    /// Cherche, sur des anneaux autour de la cible, la meilleure position de tir :
-    /// proche du drone, espacée des autres drones rouges, hors zone d'impact,
-    /// avec ligne de tir dégagée et loin des groupes de drones verts.
-    /// </summary>
-    public static bool FindFiringSlot(
-        Transform self, GameObject myId, string myTag, Transform target,
-        float preferredRange, float allySpacing, float pivotHeight,
-        List<Vector3> rejectedSlots, out Vector3 bestSlot)
-    {
-        bestSlot = Vector3.zero;
-        float bestScore = float.MinValue;
-
-        Vector3 myPos = self.position;
-        Vector3 targetPos = target.position;
-
-        Vector3 baseDir = Flat(myPos - targetPos);
-        baseDir = baseDir.sqrMagnitude > 0.01f ? baseDir.normalized : Flat(self.forward).normalized;
-
-        foreach (float factor in s_RadiusFactors)
+    static readonly float[]
+        s_RadiusFactors =
         {
-            float radius = Mathf.Max(2.5f, preferredRange * factor);
+            1f,
+            0.75f,
+            1.3f
+        };
 
-            for (int k = 0; k < SLOT_ANGLES; k++)
+
+    const int SLOT_ANGLES =
+        12;
+
+
+    public static bool FindFiringSlot(
+        Transform self,
+        GameObject myId,
+        string myTag,
+        Transform target,
+        float preferredRange,
+        float allySpacing,
+        float pivotHeight,
+        List<Vector3> rejectedSlots,
+        out Vector3 bestSlot)
+    {
+        bestSlot =
+            Vector3.zero;
+
+
+        float bestScore =
+            float.MinValue;
+
+
+        Vector3 myPos =
+            self.position;
+
+
+        Vector3 targetPos =
+            target.position;
+
+
+        Vector3 baseDir =
+            Flat(
+                myPos -
+                targetPos
+            );
+
+
+        baseDir =
+            baseDir.sqrMagnitude > 0.01f
+                ?
+                baseDir.normalized
+                :
+                Flat(
+                    self.forward
+                ).normalized;
+
+
+        foreach (
+            float factor
+            in s_RadiusFactors)
+        {
+            float radius =
+                Mathf.Max(
+                    2.5f,
+                    preferredRange *
+                    factor
+                );
+
+
+            for (
+                int k = 0;
+                k < SLOT_ANGLES;
+                k++)
             {
-                float angle = (k % 2 == 0 ? 1f : -1f) * ((k + 1) / 2) * (360f / SLOT_ANGLES);
-                Vector3 dir = Quaternion.Euler(0f, angle, 0f) * baseDir;
-                Vector3 candidate = targetPos + dir * radius;
+                float angle =
+                    (
+                        k % 2 == 0
+                            ? 1f
+                            : -1f
+                    )
+                    *
+                    (
+                        (k + 1) /
+                        2
+                    )
+                    *
+                    (
+                        360f /
+                        SLOT_ANGLES
+                    );
+
+
+                Vector3 dir =
+                    Quaternion.Euler(
+                        0f,
+                        angle,
+                        0f
+                    )
+                    *
+                    baseDir;
+
+
+                Vector3 candidate =
+                    targetPos
+                    +
+                    dir *
+                    radius;
+
 
                 NavMeshHit hit;
-                if (!NavMesh.SamplePosition(candidate, out hit, 2f, NavMesh.AllAreas)) continue;
-                Vector3 p = hit.position;
 
-                if (IsRejected(p, rejectedSlots)) continue;
 
-                float score = 0f;
+                if (
+                    !NavMesh.SamplePosition(
+                        candidate,
+                        out hit,
+                        2f,
+                        NavMesh.AllAreas
+                    )
+                )
+                {
+                    continue;
+                }
 
-                // 1. Coût du déplacement
-                score -= FlatDistance(myPos, p);
 
-                // 2. Espacement avec les autres drones rouges
-                score -= 35f * AllyCrowdPenalty(p, myId, myTag, allySpacing);
+                Vector3 point =
+                    hit.position;
 
-                // 3. Éviter les groupes de drones verts
-                score -= 8f * EnemyDronesNear(p, myTag, 6f, target);
 
-                // 4. Éviter les impacts de grenades prévus
-                if (IsInGrenadeDanger(p, myTag, GRENADE_DAMAGE_RADIUS + 2f, 10f)) score -= 100f;
+                if (
+                    IsRejected(
+                        point,
+                        rejectedSlots
+                    )
+                )
+                {
+                    continue;
+                }
 
-                // 5. Ligne de tir dégagée depuis cette position
-                if (!HasLineOfFire(p + Vector3.up * pivotHeight, target, myTag)) score -= 40f;
+
+                float score =
+                    0f;
+
+
+                // Déplacement court.
+                score -=
+                    FlatDistance(
+                        myPos,
+                        point
+                    );
+
+
+                // Espacement RED.
+                score -=
+                    35f *
+                    AllyCrowdPenalty(
+                        point,
+                        myId,
+                        myTag,
+                        allySpacing
+                    );
+
+
+                // Éviter les groupes GREEN.
+                score -=
+                    8f *
+                    EnemyDronesNear(
+                        point,
+                        myTag,
+                        6f,
+                        target
+                    );
+
+
+                // Éviter les grenades prévues.
+                if (
+                    IsInGrenadeDanger(
+                        point,
+                        myTag,
+                        GRENADE_DAMAGE_RADIUS +
+                        2f,
+                        10f
+                    )
+                )
+                {
+                    score -= 100f;
+                }
+
+
+                // Ligne de tir.
+                if (
+                    !HasLineOfFire(
+                        point +
+                        Vector3.up *
+                        pivotHeight,
+                        target,
+                        myTag
+                    )
+                )
+                {
+                    score -= 40f;
+                }
+
 
                 if (score > bestScore)
                 {
-                    bestScore = score;
-                    bestSlot = p;
+                    bestScore =
+                        score;
+
+
+                    bestSlot =
+                        point;
                 }
             }
         }
 
-        return bestScore > float.MinValue;
+
+        return
+            bestScore >
+            float.MinValue;
     }
 
-    /// <summary>
-    /// Point de "strafe" pendant le temps de recharge : déplacement latéral
-    /// (perpendiculaire à la ligne de tir) pour ne pas offrir une cible immobile
-    /// aux missiles verts, qui visent la position actuelle sans anticipation.
-    /// </summary>
+
+    // =========================================================
+    // STRAFE
+    // =========================================================
+
     public static bool FindStrafePoint(
-        Transform self, GameObject myId, string myTag, Transform target,
-        float minRange, float maxRange, float pivotHeight, float preferredSide,
-        out Vector3 bestPoint, out float chosenSide)
+        Transform self,
+        GameObject myId,
+        string myTag,
+        Transform target,
+        float minRange,
+        float maxRange,
+        float pivotHeight,
+        float preferredSide,
+        out Vector3 bestPoint,
+        out float chosenSide)
     {
-        bestPoint = self.position;
-        chosenSide = preferredSide;
-        Vector3 myPos = self.position;
+        bestPoint =
+            self.position;
 
-        Vector3 toTarget = target != null ? Flat(target.position - myPos) : Flat(self.forward);
-        toTarget = toTarget.sqrMagnitude > 0.01f ? toTarget.normalized : Vector3.forward;
-        Vector3 right = Vector3.Cross(Vector3.up, toTarget);
 
-        float bestScore = float.MinValue;
-        float[] distances = { 4f, 6.5f };
+        chosenSide =
+            preferredSide;
 
-        foreach (float dist in distances)
+
+        Vector3 myPos =
+            self.position;
+
+
+        Vector3 toTarget =
+            target != null
+                ?
+                Flat(
+                    target.position -
+                    myPos
+                )
+                :
+                Flat(
+                    self.forward
+                );
+
+
+        toTarget =
+            toTarget.sqrMagnitude > 0.01f
+                ?
+                toTarget.normalized
+                :
+                Vector3.forward;
+
+
+        Vector3 right =
+            Vector3.Cross(
+                Vector3.up,
+                toTarget
+            );
+
+
+        float bestScore =
+            float.MinValue;
+
+
+        float[] distances =
         {
-            for (int k = 0; k < 12; k++)
+            4f,
+            6.5f
+        };
+
+
+        foreach (
+            float distance
+            in distances)
+        {
+            for (
+                int k = 0;
+                k < 12;
+                k++)
             {
-                Vector3 dir = Quaternion.Euler(0f, k * 30f, 0f) * toTarget;
+                Vector3 dir =
+                    Quaternion.Euler(
+                        0f,
+                        k * 30f,
+                        0f
+                    )
+                    *
+                    toTarget;
+
+
                 NavMeshHit hit;
-                if (!NavMesh.SamplePosition(myPos + dir * dist, out hit, 2f, NavMesh.AllAreas)) continue;
-                Vector3 p = hit.position;
 
-                float score = 0f;
 
-                // Latéral plutôt qu'avant / arrière
-                score += 6f * (1f - Mathf.Abs(Vector3.Dot(dir, toTarget)));
+                if (
+                    !NavMesh.SamplePosition(
+                        myPos +
+                        dir *
+                        distance,
+                        out hit,
+                        2f,
+                        NavMesh.AllAreas
+                    )
+                )
+                {
+                    continue;
+                }
 
-                // Alterner les côtés (trajectoire imprévisible)
-                float side = Vector3.Dot(dir, right) >= 0f ? 1f : -1f;
-                if (side == preferredSide) score += 3f;
+
+                Vector3 point =
+                    hit.position;
+
+
+                float score =
+                    0f;
+
+
+                score +=
+                    6f *
+                    (
+                        1f -
+                        Mathf.Abs(
+                            Vector3.Dot(
+                                dir,
+                                toTarget
+                            )
+                        )
+                    );
+
+
+                float side =
+                    Vector3.Dot(
+                        dir,
+                        right
+                    ) >= 0f
+                    ?
+                    1f
+                    :
+                    -1f;
+
+
+                if (side == preferredSide)
+                {
+                    score += 3f;
+                }
+
 
                 if (target != null)
                 {
-                    float dTarget = FlatDistance(p, target.position);
-                    if (dTarget < minRange) score -= 3f * (minRange - dTarget);
-                    if (dTarget > maxRange) score -= 3f * (dTarget - maxRange);
-                    if (!HasLineOfFire(p + Vector3.up * pivotHeight, target, myTag)) score -= 20f;
+                    float targetDistance =
+                        FlatDistance(
+                            point,
+                            target.position
+                        );
+
+
+                    if (targetDistance < minRange)
+                    {
+                        score -=
+                            3f *
+                            (
+                                minRange -
+                                targetDistance
+                            );
+                    }
+
+
+                    if (targetDistance > maxRange)
+                    {
+                        score -=
+                            3f *
+                            (
+                                targetDistance -
+                                maxRange
+                            );
+                    }
+
+
+                    if (
+                        !HasLineOfFire(
+                            point +
+                            Vector3.up *
+                            pivotHeight,
+                            target,
+                            myTag
+                        )
+                    )
+                    {
+                        score -= 20f;
+                    }
                 }
 
-                score -= 30f * AllyCrowdPenalty(p, myId, myTag, 6f);
-                score -= 6f * EnemyDronesNear(p, myTag, 6f, target);
-                if (IsInGrenadeDanger(p, myTag, GRENADE_DAMAGE_RADIUS + 2f, 10f)) score -= 100f;
+
+                score -=
+                    30f *
+                    AllyCrowdPenalty(
+                        point,
+                        myId,
+                        myTag,
+                        6f
+                    );
+
+
+                score -=
+                    6f *
+                    EnemyDronesNear(
+                        point,
+                        myTag,
+                        6f,
+                        target
+                    );
+
+
+                if (
+                    IsInGrenadeDanger(
+                        point,
+                        myTag,
+                        GRENADE_DAMAGE_RADIUS +
+                        2f,
+                        10f
+                    )
+                )
+                {
+                    score -= 100f;
+                }
+
 
                 if (score > bestScore)
                 {
-                    bestScore = score;
-                    bestPoint = p;
-                    chosenSide = side;
+                    bestScore =
+                        score;
+
+
+                    bestPoint =
+                        point;
+
+
+                    chosenSide =
+                        side;
                 }
             }
         }
-        return bestScore > float.MinValue;
+
+
+        return
+            bestScore >
+            float.MinValue;
     }
 
-    static bool IsRejected(Vector3 p, List<Vector3> rejected)
+
+    static bool IsRejected(
+        Vector3 point,
+        List<Vector3> rejected)
     {
-        if (rejected == null) return false;
-        foreach (Vector3 r in rejected)
+        if (rejected == null)
+            return false;
+
+
+        foreach (
+            Vector3 rejectedPoint
+            in rejected)
         {
-            if (FlatDistance(p, r) < 1.5f) return true;
+            if (
+                FlatDistance(
+                    point,
+                    rejectedPoint
+                )
+                <
+                1.5f
+            )
+            {
+                return true;
+            }
         }
+
+
         return false;
     }
 
-    /// <summary>
-    /// Point de fuite hors de toutes les zones d'impact prévues,
-    /// en restant si possible à distance de tir de la cible.
-    /// </summary>
-    public static bool FindEscapePoint(
-        Transform self, GameObject myId, string myTag, Transform currentTarget,
-        float dangerRadius, out Vector3 escapePoint)
-    {
-        escapePoint = self.position;
-        Vector3 myPos = self.position;
-        List<GrenadeThreat> threats = GetEnemyGrenadeThreats(myTag);
 
-        // Direction de fuite moyenne (pondérée par l'urgence)
-        Vector3 away = Vector3.zero;
-        foreach (GrenadeThreat threat in threats)
+    // =========================================================
+    // GRENADE ESCAPE
+    // =========================================================
+
+    public static bool FindEscapePoint(
+        Transform self,
+        GameObject myId,
+        string myTag,
+        Transform currentTarget,
+        float dangerRadius,
+        out Vector3 escapePoint)
+    {
+        escapePoint =
+            self.position;
+
+
+        Vector3 myPos =
+            self.position;
+
+
+        List<GrenadeThreat> threats =
+            GetEnemyGrenadeThreats(
+                myTag
+            );
+
+
+        Vector3 away =
+            Vector3.zero;
+
+
+        foreach (
+            GrenadeThreat threat
+            in threats)
         {
-            Vector3 d = Flat(myPos - threat.Impact);
-            float dist = d.magnitude;
-            if (dist > dangerRadius + 3f) continue;
-            float urgency = 1f / Mathf.Max(0.2f, threat.TimeToImpact);
-            away += (dist > 0.01f ? d / dist : Flat(self.right)) * urgency;
+            Vector3 direction =
+                Flat(
+                    myPos -
+                    threat.Impact
+                );
+
+
+            float distance =
+                direction.magnitude;
+
+
+            if (
+                distance >
+                dangerRadius +
+                3f
+            )
+            {
+                continue;
+            }
+
+
+            float urgency =
+                1f /
+                Mathf.Max(
+                    0.2f,
+                    threat.TimeToImpact
+                );
+
+
+            away +=
+                (
+                    distance > 0.01f
+                        ?
+                        direction /
+                        distance
+                        :
+                        Flat(
+                            self.right
+                        )
+                )
+                *
+                urgency;
         }
-        if (away.sqrMagnitude < 0.0001f) away = Flat(self.right);
+
+
+        if (away.sqrMagnitude < 0.0001f)
+        {
+            away =
+                Flat(
+                    self.right
+                );
+        }
+
+
         away.Normalize();
 
-        float bestScore = float.MinValue;
-        float[] distances = { dangerRadius + 1.5f, dangerRadius + 4f };
 
-        foreach (float dist in distances)
+        float bestScore =
+            float.MinValue;
+
+
+        float[] distances =
         {
-            for (int k = 0; k < 16; k++)
-            {
-                Vector3 dir = Quaternion.Euler(0f, k * 22.5f, 0f) * away;
-                NavMeshHit hit;
-                if (!NavMesh.SamplePosition(myPos + dir * dist, out hit, 2f, NavMesh.AllAreas)) continue;
-                Vector3 p = hit.position;
+            dangerRadius + 1.5f,
+            dangerRadius + 4f
+        };
 
-                float score = 0f;
-                if (IsInGrenadeDanger(p, myTag, dangerRadius, 10f)) score -= 200f;
-                score += 10f * Vector3.Dot(dir, away);
-                score -= 0.5f * FlatDistance(myPos, p);
-                score -= 25f * AllyCrowdPenalty(p, myId, myTag, 6f);
+
+        foreach (
+            float distance
+            in distances)
+        {
+            for (
+                int k = 0;
+                k < 16;
+                k++)
+            {
+                Vector3 dir =
+                    Quaternion.Euler(
+                        0f,
+                        k * 22.5f,
+                        0f
+                    )
+                    *
+                    away;
+
+
+                NavMeshHit hit;
+
+
+                if (
+                    !NavMesh.SamplePosition(
+                        myPos +
+                        dir *
+                        distance,
+                        out hit,
+                        2f,
+                        NavMesh.AllAreas
+                    )
+                )
+                {
+                    continue;
+                }
+
+
+                Vector3 point =
+                    hit.position;
+
+
+                float score =
+                    0f;
+
+
+                if (
+                    IsInGrenadeDanger(
+                        point,
+                        myTag,
+                        dangerRadius,
+                        10f
+                    )
+                )
+                {
+                    score -= 200f;
+                }
+
+
+                score +=
+                    10f *
+                    Vector3.Dot(
+                        dir,
+                        away
+                    );
+
+
+                score -=
+                    0.5f *
+                    FlatDistance(
+                        myPos,
+                        point
+                    );
+
+
+                score -=
+                    25f *
+                    AllyCrowdPenalty(
+                        point,
+                        myId,
+                        myTag,
+                        6f
+                    );
+
 
                 if (currentTarget != null)
                 {
-                    float dTarget = FlatDistance(p, currentTarget.position);
-                    if (dTarget > 25f) score -= (dTarget - 25f);
+                    float targetDistance =
+                        FlatDistance(
+                            point,
+                            currentTarget.position
+                        );
+
+
+                    if (targetDistance > 25f)
+                    {
+                        score -=
+                            targetDistance -
+                            25f;
+                    }
                 }
+
 
                 if (score > bestScore)
                 {
-                    bestScore = score;
-                    escapePoint = p;
+                    bestScore =
+                        score;
+
+
+                    escapePoint =
+                        point;
                 }
             }
         }
-        return bestScore > float.MinValue;
+
+
+        return
+            bestScore >
+            float.MinValue;
     }
 }

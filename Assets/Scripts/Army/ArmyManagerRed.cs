@@ -9,73 +9,147 @@ public class ArmyManagerRed : ArmyManager
     // =========================================================
     // ARTILLERY & MISSILE CONFIGURATION
     // =========================================================
+
     const float ARTILLERY_DAMAGE = 10f;
     const float PENDING_SHOT_LIFETIME = 4.5f;
+
     const float MISSILE_DAMAGE = 5f;
     const float MISSILE_LIFETIME = 4.5f;
 
-    [SerializeField] float m_DroneFinishOffHealthRatio = 0.5f;
-    [SerializeField] float m_DroneFinishOffAbsHealth = 5f;
+    [SerializeField]
+    float m_DroneFinishOffHealthRatio = 0.5f;
+
+    [SerializeField]
+    float m_DroneFinishOffAbsHealth = 5f;
+
 
     // =========================================================
-    // PENDING DAMAGE (在途伤害追踪)
+    // PENDING DAMAGE
     // =========================================================
+
     class PendingShot
     {
         public IArmyElement Target;
         public float Damage;
         public float ExpireTime;
     }
-    readonly List<PendingShot> m_PendingShots = new List<PendingShot>();
 
-    public void RegisterPendingArtilleryShot(GameObject target)
+    readonly List<PendingShot> m_PendingShots =
+        new List<PendingShot>();
+
+
+    public void RegisterPendingArtilleryShot(
+        GameObject target)
     {
-        RegisterPendingShot(target, ARTILLERY_DAMAGE, PENDING_SHOT_LIFETIME);
+        RegisterPendingShot(
+            target,
+            ARTILLERY_DAMAGE,
+            PENDING_SHOT_LIFETIME
+        );
     }
 
-    public void RegisterPendingMissileShot(GameObject target, int missileCount = 2)
+
+    public void RegisterPendingMissileShot(
+        GameObject target,
+        int missileCount = 2)
     {
-        if (target == null) return;
-        int count = Mathf.Max(1, missileCount);
+        if (target == null)
+            return;
+
+        int count =
+            Mathf.Max(
+                1,
+                missileCount
+            );
+
         for (int i = 0; i < count; i++)
-            RegisterPendingShot(target, MISSILE_DAMAGE, MISSILE_LIFETIME);
+        {
+            RegisterPendingShot(
+                target,
+                MISSILE_DAMAGE,
+                MISSILE_LIFETIME
+            );
+        }
     }
 
-    void RegisterPendingShot(GameObject target, float damage, float lifetime)
+
+    void RegisterPendingShot(
+        GameObject target,
+        float damage,
+        float lifetime)
     {
-        if (target == null) return;
-        IArmyElement element = target.GetComponent<IArmyElement>();
-        if (element == null) return;
+        if (target == null)
+            return;
+
+        IArmyElement element =
+            target.GetComponent<IArmyElement>();
+
+        if (element == null)
+            return;
+
 
         CleanupPendingShots();
-        m_PendingShots.Add(new PendingShot
-        {
-            Target = element,
-            Damage = damage,
-            ExpireTime = Time.time + lifetime
-        });
+
+
+        m_PendingShots.Add(
+            new PendingShot
+            {
+                Target = element,
+                Damage = damage,
+                ExpireTime =
+                    Time.time + lifetime
+            }
+        );
     }
+
 
     void CleanupPendingShots()
     {
-        m_PendingShots.RemoveAll(shot => shot.Target == null || Time.time >= shot.ExpireTime);
+        m_PendingShots.RemoveAll(
+            shot =>
+                shot.Target == null ||
+                Time.time >= shot.ExpireTime
+        );
     }
 
-    float GetPendingDamage(IArmyElement target)
+
+    float GetPendingDamage(
+        IArmyElement target)
     {
         CleanupPendingShots();
-        return m_PendingShots.Where(shot => shot.Target == target).Sum(shot => shot.Damage);
+
+        return m_PendingShots
+            .Where(
+                shot =>
+                    shot.Target == target
+            )
+            .Sum(
+                shot =>
+                    shot.Damage
+            );
     }
 
-    float GetExpectedRemainingHealth(IArmyElement target)
+
+    float GetExpectedRemainingHealth(
+        IArmyElement target)
     {
-        return target.Health - GetPendingDamage(target);
+        return
+            target.Health -
+            GetPendingDamage(target);
     }
+
 
     // =========================================================
     // UNIFIED TARGET REQUEST
     // =========================================================
-    public enum RequesterType { Drone, Turret, Medic }
+
+    public enum RequesterType
+    {
+        Drone,
+        Turret,
+        Medic
+    }
+
 
     public GameObject RequestTarget(
         RequesterType requesterType,
@@ -86,19 +160,44 @@ public class ArmyManagerRed : ArmyManager
         switch (requesterType)
         {
             case RequesterType.Turret:
-                return GetBestTargetForRedTurret(null, requesterPos, minRadius, maxRadius);
+
+                return GetBestTargetForRedTurret(
+                    null,
+                    requesterPos,
+                    minRadius,
+                    maxRadius
+                );
+
+
             case RequesterType.Drone:
-                return GetBestTargetForRedDrone(requesterPos, minRadius, maxRadius);
+
+                return GetBestTargetForRedDrone(
+                    requesterPos,
+                    minRadius,
+                    maxRadius
+                );
+
+
             case RequesterType.Medic:
-                return GetBestHealTarget(requesterPos, minRadius, maxRadius);
+
+                return GetBestHealTarget(
+                    requesterPos,
+                    minRadius,
+                    maxRadius
+                );
+
+
             default:
+
                 return null;
         }
     }
 
+
     // =========================================================
     // RED ARTILLERY TARGET SELECTION
     // =========================================================
+
     public GameObject GetBestTargetForRedTurret(
         GameObject requestingTurret,
         Vector3 turretPosition,
@@ -107,170 +206,589 @@ public class ArmyManagerRed : ArmyManager
     {
         CleanupPendingShots();
 
-        // 优先级1：敌方炮塔
-        List<Turret> enemyTurretsInRange = GetAllEnemiesOfType<Turret>(false)
-            .Where(turret =>
-            {
-                float distance = Vector3.Distance(turretPosition, turret.transform.position);
-                return distance > minRadius && distance < maxRadius;
-            }).ToList();
 
-        Turret bestEnemyTurret = enemyTurretsInRange
-            .Where(turret => GetExpectedRemainingHealth(turret) > 0f)
-            .OrderBy(turret => GetExpectedRemainingHealth(turret))
-            .ThenBy(turret => Vector3.Distance(turretPosition, turret.transform.position))
+        // ---------------------------------------------------------
+        // PRIORITY 1 : ENEMY TURRETS
+        //
+        // Strategic coordination:
+        //
+        // RED artillery attacks first the GREEN turrets which are
+        // difficult for RED drones to reach with the NavMesh.
+        //
+        // Easy / flat-area turrets are therefore left to the raider
+        // drones whenever possible.
+        //
+        // This avoids wasting RED drones on turrets located on
+        // terraces, map borders or positions requiring large detours.
+        // ---------------------------------------------------------
+
+        List<Turret> enemyTurretsInRange =
+            GetAllEnemiesOfType<Turret>(false)
+            .Where(
+                turret =>
+                {
+                    float distance =
+                        Vector3.Distance(
+                            turretPosition,
+                            turret.transform.position
+                        );
+
+                    return
+                        distance > minRadius &&
+                        distance < maxRadius;
+                }
+            )
+            .ToList();
+
+
+        // Normally SelectRedTurretTarget passes the actual turret.
+        // RequestTarget(Turret) can however call this method without
+        // one, so use another RED unit as a safe fallback for the tag.
+        string redTag =
+            GetRedArmyTag(
+                requestingTurret
+            );
+
+
+        var turretCandidates =
+            enemyTurretsInRange
+
+            // Anti-overkill:
+            // ignore a turret already expected to die from shots
+            // which are currently travelling towards it.
+            .Where(
+                turret =>
+                    GetExpectedRemainingHealth(
+                        turret
+                    ) > 0f
+            )
+
+            .Select(
+                turret => new
+                {
+                    Turret = turret,
+
+                    ExpectedHealth =
+                        GetExpectedRemainingHealth(
+                            turret
+                        ),
+
+                    // 0 = easy for drones
+                    // 1 = extremely difficult / inaccessible
+                    Difficulty =
+                        RedDroneTactics
+                            .GetTurretAccessDifficulty(
+                                turret.transform,
+                                redTag
+                            )
+                }
+            )
+
+            .ToList();
+
+
+        Turret bestEnemyTurret =
+            turretCandidates
+
+            // 1. Hardest terrain / NavMesh access first.
+            .OrderByDescending(
+                candidate =>
+                    candidate.Difficulty
+            )
+
+            // 2. Among similar targets, finish the weakest turret.
+            .ThenBy(
+                candidate =>
+                    candidate.ExpectedHealth
+            )
+
+            // 3. Final tie-breaker: distance from this artillery.
+            .ThenBy(
+                candidate =>
+                    Vector3.Distance(
+                        turretPosition,
+                        candidate
+                            .Turret
+                            .transform
+                            .position
+                    )
+            )
+
+            .Select(
+                candidate =>
+                    candidate.Turret
+            )
+
             .FirstOrDefault();
 
-        if (bestEnemyTurret != null) return bestEnemyTurret.gameObject;
 
-        // 优先级2：敌方无人机
-        List<Drone> enemyDronesInRange = GetAllEnemiesOfType<Drone>(false)
-            .Where(drone =>
-            {
-                float distance = Vector3.Distance(turretPosition, drone.transform.position);
-                return distance > minRadius && distance < maxRadius;
-            }).ToList();
+        if (bestEnemyTurret != null)
+        {
+            return
+                bestEnemyTurret.gameObject;
+        }
 
-        // 优先级2A：慢速无人机
-        List<Drone> slowDrones = enemyDronesInRange
-            .Where(drone =>
-            {
-                NavMeshAgent agent = drone.GetComponent<NavMeshAgent>();
-                if (agent == null) return false;
-                return agent.velocity.magnitude <= 1.0f;
-            }).ToList();
+
+        // ---------------------------------------------------------
+        // PRIORITY 2 : ENEMY DRONES
+        // ---------------------------------------------------------
+
+        List<Drone> enemyDronesInRange =
+            GetAllEnemiesOfType<Drone>(false)
+            .Where(
+                drone =>
+                {
+                    float distance =
+                        Vector3.Distance(
+                            turretPosition,
+                            drone.transform.position
+                        );
+
+                    return
+                        distance > minRadius &&
+                        distance < maxRadius;
+                }
+            )
+            .ToList();
+
+
+        // ---------------------------------------------------------
+        // PRIORITY 2A : SLOW / STATIONARY DRONES
+        //
+        // Artillery is much more effective against targets whose
+        // current NavMesh velocity is low.
+        // ---------------------------------------------------------
+
+        List<Drone> slowDrones =
+            enemyDronesInRange
+            .Where(
+                drone =>
+                {
+                    NavMeshAgent agent =
+                        drone.GetComponent<NavMeshAgent>();
+
+                    if (agent == null)
+                        return false;
+
+                    return
+                        agent.velocity.magnitude <= 1.0f;
+                }
+            )
+            .ToList();
+
 
         if (slowDrones.Count > 0)
         {
-            Drone nearestSlowDrone = slowDrones
-                .OrderBy(drone => Vector3.Distance(turretPosition, drone.transform.position))
+            Drone nearestSlowDrone =
+                slowDrones
+
+                .OrderBy(
+                    drone =>
+                        Vector3.Distance(
+                            turretPosition,
+                            drone.transform.position
+                        )
+                )
+
                 .FirstOrDefault();
-            if (nearestSlowDrone != null) return nearestSlowDrone.gameObject;
+
+
+            if (nearestSlowDrone != null)
+            {
+                return
+                    nearestSlowDrone.gameObject;
+            }
         }
 
-        // 优先级3：最近的无人机
-        Drone fallbackDrone = enemyDronesInRange
-            .OrderBy(drone => Vector3.Distance(turretPosition, drone.transform.position))
+
+        // ---------------------------------------------------------
+        // PRIORITY 3 : NEAREST ENEMY DRONE
+        // ---------------------------------------------------------
+
+        Drone fallbackDrone =
+            enemyDronesInRange
+
+            .OrderBy(
+                drone =>
+                    Vector3.Distance(
+                        turretPosition,
+                        drone.transform.position
+                    )
+            )
+
             .FirstOrDefault();
 
-        if (fallbackDrone != null) return fallbackDrone.gameObject;
+
+        if (fallbackDrone != null)
+        {
+            return
+                fallbackDrone.gameObject;
+        }
+
 
         return null;
     }
+
+
+    // =========================================================
+    // ARMY TAG HELPER
+    // =========================================================
+
+    string GetRedArmyTag(
+        GameObject requestingTurret)
+    {
+        if (requestingTurret != null)
+        {
+            return
+                requestingTurret.tag;
+        }
+
+
+        // Fallback used if the generic RequestTarget interface
+        // requests a turret target without passing the requester.
+        foreach (IArmyElement element in m_ArmyElements)
+        {
+            if (element == null)
+                continue;
+
+            Component component =
+                element as Component;
+
+            if (component != null)
+            {
+                return
+                    component.gameObject.tag;
+            }
+        }
+
+
+        // Last-resort fallback.
+        return gameObject.tag;
+    }
+
 
     // =========================================================
     // RED DRONE TARGET SELECTION
     // =========================================================
-    GameObject GetBestTargetForRedDrone(Vector3 dronePos, float minRadius, float maxRadius)
+
+    GameObject GetBestTargetForRedDrone(
+        Vector3 dronePos,
+        float minRadius,
+        float maxRadius)
     {
         CleanupPendingShots();
 
-        // 优先级1：收尾残血炮塔
-        Turret finishableTurret = GetAllEnemiesOfType<Turret>(false)
-            .Where(turret =>
-            {
-                float distance = Vector3.Distance(dronePos, turret.transform.position);
-                return distance > minRadius && distance < maxRadius;
-            })
-            .Where(turret =>
-            {
-                float expected = GetExpectedRemainingHealth(turret);
-                return expected > 0f &&
-                       (expected <= turret.Health * m_DroneFinishOffHealthRatio ||
-                        expected <= m_DroneFinishOffAbsHealth);
-            })
-            .OrderBy(turret => GetExpectedRemainingHealth(turret))
-            .ThenBy(turret => Vector3.Distance(dronePos, turret.transform.position))
+
+        // ---------------------------------------------------------
+        // PRIORITY 1 : FINISH WEAKENED ENEMY TURRETS
+        // ---------------------------------------------------------
+
+        Turret finishableTurret =
+            GetAllEnemiesOfType<Turret>(false)
+
+            .Where(
+                turret =>
+                {
+                    float distance =
+                        Vector3.Distance(
+                            dronePos,
+                            turret.transform.position
+                        );
+
+                    return
+                        distance > minRadius &&
+                        distance < maxRadius;
+                }
+            )
+
+            .Where(
+                turret =>
+                {
+                    float expected =
+                        GetExpectedRemainingHealth(
+                            turret
+                        );
+
+                    return
+                        expected > 0f &&
+                        (
+                            expected <=
+                            turret.Health *
+                            m_DroneFinishOffHealthRatio
+                            ||
+                            expected <=
+                            m_DroneFinishOffAbsHealth
+                        );
+                }
+            )
+
+            .OrderBy(
+                turret =>
+                    GetExpectedRemainingHealth(
+                        turret
+                    )
+            )
+
+            .ThenBy(
+                turret =>
+                    Vector3.Distance(
+                        dronePos,
+                        turret.transform.position
+                    )
+            )
+
             .FirstOrDefault();
 
-        if (finishableTurret != null) return finishableTurret.gameObject;
 
-        // 优先级2：返回最近的敌机（后续 Ruofan 的 RedDroneTactics 会通过队友计数防扎堆）
-        var enemyDrones = GetAllEnemiesOfType<ArmyElement>(false)
-            .Where(d => d.Health > 0 && !d.CompareTag(gameObject.tag))
-            .OrderBy(d => Vector3.Distance(dronePos, d.transform.position))
+        if (finishableTurret != null)
+        {
+            return
+                finishableTurret.gameObject;
+        }
+
+
+        // ---------------------------------------------------------
+        // PRIORITY 2 : NEAREST ENEMY
+        //
+        // Ruofan's RedDroneTactics performs the more advanced
+        // focus-fire / raider / anti-clustering decisions.
+        // ---------------------------------------------------------
+
+        var enemyDrones =
+            GetAllEnemiesOfType<ArmyElement>(false)
+
+            .Where(
+                enemy =>
+                    enemy.Health > 0 &&
+                    !enemy.CompareTag(
+                        gameObject.tag
+                    )
+            )
+
+            .OrderBy(
+                enemy =>
+                    Vector3.Distance(
+                        dronePos,
+                        enemy.transform.position
+                    )
+            )
+
             .FirstOrDefault();
 
-        if (enemyDrones != null) return enemyDrones.gameObject;
+
+        if (enemyDrones != null)
+        {
+            return
+                enemyDrones.gameObject;
+        }
+
 
         return null;
     }
 
+
     // =========================================================
     // MEDIC TARGET SELECTION
     // =========================================================
-    GameObject GetBestHealTarget(Vector3 medicPos, float minRadius, float maxRadius)
+
+    GameObject GetBestHealTarget(
+        Vector3 medicPos,
+        float minRadius,
+        float maxRadius)
     {
         IArmyElement best = null;
-        float bestHealth = float.MaxValue;
 
-        foreach (IArmyElement ally in m_ArmyElements)
+        float bestHealth =
+            float.MaxValue;
+
+
+        foreach (
+            IArmyElement ally
+            in m_ArmyElements)
         {
-            if (ally == null) continue;
-            if (ally.Health <= 0f) continue; 
-            
-            Component allyComponent = ally as Component;
-            if (allyComponent == null) continue;
-            if (allyComponent.gameObject == gameObject) continue;
+            if (ally == null)
+                continue;
 
-            // 获取最大血量（假设都是50），如果低于最大血量，才需要治疗
-            Health healthComp = allyComponent.GetComponent<Health>();
-            if (healthComp != null && ally.Health >= healthComp.MaxValue) continue;
+            if (ally.Health <= 0f)
+                continue;
 
-            float distance = Vector3.Distance(medicPos, allyComponent.transform.position);
-            if (distance <= minRadius || distance >= maxRadius) continue;
+
+            Component allyComponent =
+                ally as Component;
+
+
+            if (allyComponent == null)
+                continue;
+
+
+            if (
+                allyComponent.gameObject ==
+                gameObject
+            )
+            {
+                continue;
+            }
+
+
+            Health healthComp =
+                allyComponent
+                    .GetComponent<Health>();
+
+
+            if (
+                healthComp != null &&
+                ally.Health >=
+                healthComp.MaxValue
+            )
+            {
+                continue;
+            }
+
+
+            float distance =
+                Vector3.Distance(
+                    medicPos,
+                    allyComponent
+                        .transform
+                        .position
+                );
+
+
+            if (
+                distance <= minRadius ||
+                distance >= maxRadius
+            )
+            {
+                continue;
+            }
+
 
             if (ally.Health < bestHealth)
             {
-                bestHealth = ally.Health;
-                best = ally;
+                bestHealth =
+                    ally.Health;
+
+                best =
+                    ally;
             }
         }
 
-        if (best == null) return null;
 
-        Component bestComponent = best as Component;
-        return bestComponent != null ? bestComponent.gameObject : null;
+        if (best == null)
+            return null;
+
+
+        Component bestComponent =
+            best as Component;
+
+
+        return
+            bestComponent != null
+                ? bestComponent.gameObject
+                : null;
     }
 
+
     // =========================================================
-    // HELPER: GET ALLIES
+    // HELPER : GET ALLIES
     // =========================================================
-    public List<T> GetAllAlliesOfType<T>(bool includeDead = false) where T : Component
+
+    public List<T> GetAllAlliesOfType<T>(
+        bool includeDead = false)
+        where T : Component
     {
-        List<T> allies = new List<T>();
-        foreach (var element in m_ArmyElements)
+        List<T> allies =
+            new List<T>();
+
+
+        foreach (
+            var element
+            in m_ArmyElements)
         {
-            if (element == null) continue;
-            if (!includeDead && element.Health <= 0f) continue;
-            if (element is T comp) allies.Add(comp);
+            if (element == null)
+                continue;
+
+
+            if (
+                !includeDead &&
+                element.Health <= 0f
+            )
+            {
+                continue;
+            }
+
+
+            if (element is T comp)
+            {
+                allies.Add(comp);
+            }
         }
+
+
         return allies;
     }
+
 
     // =========================================================
     // BATTLE END
     // =========================================================
-    public override void ArmyElementHasBeenKilled(GameObject go)
+
+    public override void ArmyElementHasBeenKilled(
+        GameObject go)
     {
-        base.ArmyElementHasBeenKilled(go);
+        base.ArmyElementHasBeenKilled(
+            go
+        );
+
 
         if (m_ArmyElements.Count == 0)
         {
-            GUIUtility.systemCopyBuffer = "0\t" + ((int)Timer.Value).ToString() + "\t0\t0\t0";
-            BattleStatsManager.Instance?.PrintBattleResult("2");
+            GUIUtility.systemCopyBuffer =
+                "0\t" +
+                ((int)Timer.Value).ToString() +
+                "\t0\t0\t0";
+
+
+            BattleStatsManager.Instance?
+                .PrintBattleResult(
+                    "2"
+                );
         }
     }
 
-    public void GreenArmyIsDead(string deadArmyTag)
-    {
-        int nDrones = 0, nTurrets = 0, health = 0;
-        ComputeStatistics(ref nDrones, ref nTurrets, ref health);
 
-        GUIUtility.systemCopyBuffer = "1\t" + ((int)Timer.Value).ToString() + "\t" +
-                                      nDrones.ToString() + "\t" + nTurrets.ToString() + "\t" + health.ToString();
+    public void GreenArmyIsDead(
+        string deadArmyTag)
+    {
+        int nDrones = 0;
+        int nTurrets = 0;
+        int health = 0;
+
+
+        ComputeStatistics(
+            ref nDrones,
+            ref nTurrets,
+            ref health
+        );
+
+
+        GUIUtility.systemCopyBuffer =
+            "1\t" +
+            ((int)Timer.Value).ToString() +
+            "\t" +
+            nDrones.ToString() +
+            "\t" +
+            nTurrets.ToString() +
+            "\t" +
+            health.ToString();
+
 
         RefreshHudDisplay();
-        BattleStatsManager.Instance?.PrintBattleResult("1");
+
+
+        BattleStatsManager.Instance?
+            .PrintBattleResult(
+                "1"
+            );
     }
 }
