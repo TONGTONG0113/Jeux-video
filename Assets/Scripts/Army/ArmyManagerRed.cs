@@ -184,7 +184,7 @@ public class ArmyManagerRed : ArmyManager
                     requesterPos,
                     minRadius,
                     maxRadius
-                );
+                )?.gameObject;
 
 
             default:
@@ -591,101 +591,40 @@ public class ArmyManagerRed : ArmyManager
     // MEDIC TARGET SELECTION
     // =========================================================
 
-    GameObject GetBestHealTarget(
-        Vector3 medicPos,
-        float minRadius,
-        float maxRadius)
+    public bool IsInjuredHealTarget(ArmyElement ally)
     {
-        IArmyElement best = null;
-
-        float bestHealth =
-            float.MaxValue;
-
-
-        foreach (
-            IArmyElement ally
-            in m_ArmyElements)
+        if (ally == null || !ally.isActiveAndEnabled || ally.ArmyManager != this ||
+            !ally.CompareTag(Medic.RedTeamTag) || (ally is not Drone && ally is not Turret))
         {
-            if (ally == null)
-                continue;
-
-            if (ally.Health <= 0f)
-                continue;
-
-
-            Component allyComponent =
-                ally as Component;
-
-
-            if (allyComponent == null)
-                continue;
-
-
-            if (
-                allyComponent.gameObject ==
-                gameObject
-            )
-            {
-                continue;
-            }
-
-
-            Health healthComp =
-                allyComponent
-                    .GetComponent<Health>();
-
-
-            if (
-                healthComp != null &&
-                ally.Health >=
-                healthComp.MaxValue
-            )
-            {
-                continue;
-            }
-
-
-            float distance =
-                Vector3.Distance(
-                    medicPos,
-                    allyComponent
-                        .transform
-                        .position
-                );
-
-
-            if (
-                distance <= minRadius ||
-                distance >= maxRadius
-            )
-            {
-                continue;
-            }
-
-
-            if (ally.Health < bestHealth)
-            {
-                bestHealth =
-                    ally.Health;
-
-                best =
-                    ally;
-            }
+            return false;
         }
 
+        Health health = ally.UnitHealth;
+        return health != null && health.isActiveAndEnabled && health.CanHeal;
+    }
 
-        if (best == null)
-            return null;
+    public ArmyElement GetBestHealTarget(
+        Vector3 medicPos,
+        float minRadius,
+        float maxRadius,
+        System.Predicate<ArmyElement> canReach = null,
+        bool dronesOnly = false)
+    {
+        var candidates = m_ArmyElements
+            .OfType<ArmyElement>()
+            .Where(ally => IsInjuredHealTarget(ally) && (!dronesOnly || ally is Drone))
+            .Select(ally => new { Ally = ally, Distance = Vector3.Distance(ally.transform.position, medicPos) })
+            .Where(candidate => candidate.Distance >= minRadius && candidate.Distance < maxRadius)
+            .OrderBy(candidate => candidate.Ally is Turret)
+            .ThenBy(candidate => candidate.Distance);
 
+        foreach (var candidate in candidates)
+        {
+            if (canReach == null || canReach(candidate.Ally))
+                return candidate.Ally;
+        }
 
-        Component bestComponent =
-            best as Component;
-
-
-        return
-            bestComponent != null
-                ? bestComponent.gameObject
-                : null;
+        return null;
     }
 
 
@@ -736,6 +675,28 @@ public class ArmyManagerRed : ArmyManager
     public override void ArmyElementHasBeenKilled(
         GameObject go)
     {
+        if (go == null || m_ArmyElements.Count == 0)
+            return;
+
+        bool hasSurvivingCombatUnit = m_ArmyElements.OfType<ArmyElement>().Any(
+            unit => unit != null && unit.gameObject != go &&
+                (unit is Drone || unit is Turret) && unit.Health > 0f);
+
+        if (!hasSurvivingCombatUnit)
+        {
+            // Clear the defeated roster before the base handler checks it and raises the death event.
+            foreach (Medic medic in m_ArmyElements.OfType<Medic>())
+            {
+                if (medic == null || medic.gameObject == go)
+                    continue;
+
+                medic.ArmyManager = null;
+                Destroy(medic.gameObject);
+            }
+
+            m_ArmyElements.Clear();
+        }
+
         base.ArmyElementHasBeenKilled(
             go
         );
