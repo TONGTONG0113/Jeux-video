@@ -50,9 +50,16 @@ public abstract class ArmyManager : MonoBehaviour
                 continue;
             }
 
-            if (item is Drone) safeDrones++;
-            if (item is Turret) safeTurrets++;
-            safeHealth += (int)item.Health;
+            if (item is Drone)
+            {
+                safeDrones++;
+                safeHealth += (int)item.Health;
+            }
+            else if (item is Turret)
+            {
+                safeTurrets++;
+                safeHealth += (int)item.Health;
+            }
         }
 
         nDrones = safeDrones;
